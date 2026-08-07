@@ -13,9 +13,20 @@ import iconv from 'iconv-lite';
 const CODIGOS: Record<string, string> = {
   '002': 'Nombre de funcion no definido en ExcelSiigo.',
   '016': 'Usuario o clave de SIIGO incorrectos.',
+  '020': 'El modulo que necesita esta funcion no esta instalado en esta empresa.',
   '070': 'No se pudo abrir o localizar un archivo requerido.',
   '081': 'Los parametros de la funcion tienen errores (orden o formato del argv).',
+  '105': 'La empresa no tiene habilitado el modulo que necesita esta funcion.',
 };
+
+/**
+ * Codigos que indican que la funcion no aplica a esta empresa, no que algo se haya roto.
+ *
+ * Se dan cuando SIIGO Pyme esta licenciado sin un modulo: pedir seriales o nomina a una
+ * empresa que no los tiene devuelve estos codigos. Conviene distinguirlos de un fallo real
+ * para que quien automatice pueda saltarse esas funciones en vez de reintentarlas.
+ */
+const CODIGOS_NO_DISPONIBLE = new Set(['020', '105']);
 
 export interface ParsedLog {
   /** Contenido decodificado. Cadena vacia si el archivo no existe o esta vacio. */
@@ -26,6 +37,11 @@ export interface ParsedLog {
   errors: string[];
   /** Ultimas lineas no vacias, para dar contexto sin volcar el log entero. */
   tail: string[];
+  /**
+   * La funcion no aplica a esta empresa porque le falta el modulo (seriales, nomina...).
+   * No es un fallo del servidor ni de los parametros.
+   */
+  moduleUnavailable: boolean;
   /** Si el archivo existia. */
   exists: boolean;
 }
@@ -47,9 +63,12 @@ export function parseLogText(text: string): Omit<ParsedLog, 'exists'> {
   const nonEmpty = all.filter((l) => l.trim().length > 0);
 
   const errors: string[] = [];
+  let moduleUnavailable = false;
+
   for (const line of nonEmpty) {
     const code = CODE_LINE.exec(line.trim());
     if (code && code[1] !== '000') {
+      if (CODIGOS_NO_DISPONIBLE.has(code[1]!)) moduleUnavailable = true;
       const explicacion = CODIGOS[code[1]!];
       errors.push(explicacion ? `${line.trim()} — ${explicacion}` : line.trim());
       continue;
@@ -57,7 +76,7 @@ export function parseLogText(text: string): Omit<ParsedLog, 'exists'> {
     if (ERROR_PATTERNS.some((re) => re.test(line))) errors.push(line.trim());
   }
 
-  return { text, lines: nonEmpty.length, errors, tail: nonEmpty.slice(-20) };
+  return { text, lines: nonEmpty.length, errors, tail: nonEmpty.slice(-20), moduleUnavailable };
 }
 
 export async function readSiigoLog(logPath: string): Promise<ParsedLog> {
@@ -65,7 +84,7 @@ export async function readSiigoLog(logPath: string): Promise<ParsedLog> {
     const buf = await readFile(logPath);
     return { ...parseLogText(iconv.decode(buf, 'win1252')), exists: true };
   } catch {
-    return { text: '', lines: 0, errors: [], tail: [], exists: false };
+    return { text: '', lines: 0, errors: [], tail: [], moduleUnavailable: false, exists: false };
   }
 }
 

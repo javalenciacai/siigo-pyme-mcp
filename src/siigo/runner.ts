@@ -59,6 +59,11 @@ export interface RunResult {
   timedOut: boolean;
   /** Titulo del cuadro de dialogo que bloqueo la ejecucion, si aparecio uno. */
   dialogTitle: string | null;
+  /**
+   * La empresa no tiene el modulo que necesita esta funcion (seriales, nomina...).
+   * La corrida no es correcta, pero tampoco tiene arreglo: reintentar no sirve de nada.
+   */
+  moduleUnavailable: boolean;
   durationMs: number;
   /** Linea de comando ejecutada, con la clave enmascarada. */
   commandLine: string;
@@ -282,8 +287,8 @@ async function runFunctionUnqueued(req: RunRequest): Promise<RunResult> {
   problems.push(...log.errors);
   if (excelResult && !excelResult.success) problems.push(`SiigoExcel: ${excelResult.resultMessage}`);
 
-  // Con un dialogo de por medio ya se sabe la causa; enumerar consecuencias solo la tapa.
-  if (req.fn.kind === 'export' && !dialogTitle) {
+  // Con un dialogo o un modulo ausente ya se sabe la causa; enumerar consecuencias la tapa.
+  if (req.fn.kind === 'export' && !dialogTitle && !log.moduleUnavailable) {
     if (outputBytes === null) {
       // Si el log ya explica que fallo, apuntar a Excel confundiria: el archivo falta como
       // consecuencia de ese error, no por un problema de instalacion.
@@ -310,6 +315,7 @@ async function runFunctionUnqueued(req: RunRequest): Promise<RunResult> {
     exitCode,
     timedOut,
     dialogTitle,
+    moduleUnavailable: log.moduleUnavailable,
     durationMs,
     commandLine,
     logPath,

@@ -154,9 +154,14 @@ Nacen del ejecutable de SIIGO, no del servidor:
   vigila el título de la ventana del proceso y, en cuanto reconoce un diálogo de error, cancela
   la ejecución y devuelve ese título: es el único sitio donde SIIGO explica qué pasó cuando no
   llega a escribir nada.
-- **Las exportaciones tardan.** Un `GETTER` de mil terceros ronda el minuto. El servidor emite
-  notificaciones de progreso para que el cliente no aborte la llamada por silencio, y corta a
-  los 180 segundos por defecto (`timeoutMs` en la configuración).
+- **Las exportaciones tardan.** Un `GETTER` de mil terceros ronda el minuto; un `GETMOV` de un
+  año completo con 25 000 movimientos, algo más de dos. El servidor emite notificaciones de
+  progreso para que el cliente no aborte la llamada por silencio, y corta a los 180 segundos
+  por defecto (`timeoutMs` en la configuración).
+- **No todas las funciones aplican a todas las empresas.** Si SIIGO está licenciado sin el
+  módulo de seriales o el de nómina, esas funciones responden `020` o `105`. El servidor lo
+  distingue de un error corriente y devuelve `moduloNoDisponible: true`: reintentar no cambia
+  nada, hay que habilitar el módulo en SIIGO o usar otra función.
 - **Rutas de 50 caracteres.** Se aplica al `.xlsx` de salida y al log. El servidor genera
   nombres cortos y avisa antes de invocar si una ruta se pasa.
 - **Requiere Excel y sesión interactiva**, por el uso de COM.
@@ -177,6 +182,7 @@ npm test               # 115 tests, incluidos los 47 dorados contra los ejemplos
 npm run build
 npm run test:smoke     # handshake MCP y verificación de las 56 herramientas
 npm run test:e2e       # prueba negativa: exige que un fallo se reporte como fallo
+npm run test:tools     # ejercita LAS 56 herramientas contra una instalación real
 ```
 
 `test:e2e` es el único script que necesita SIIGO instalado; el resto corre en cualquier
@@ -191,6 +197,14 @@ el `.xlsx` exista, pese más de cero y traiga columnas y filas legibles:
 SIIGO_USUARIO=ADMON SIIGO_CLAVE=1111 npm run test:e2e     # bash
 $env:SIIGO_USUARIO='ADMON'; $env:SIIGO_CLAVE='1111'; npm run test:e2e   # PowerShell
 ```
+
+`test:tools` recorre las 56 herramientas: invoca las 9 de apoyo, **ejecuta de verdad** las 29
+exportaciones contra la empresa, y prueba las 18 importaciones **solo por su ruta de
+validación**. Las importaciones escriben en la contabilidad y ese script no puede deshacerlo,
+así que comprueba el esquema, la resolución de empresa y credenciales y la construcción del
+argv, y verifica que rechacen un archivo de entrada inexistente antes de lanzar el ejecutable.
+Su argv sí está cubierto al completo por los tests dorados. Para probar una importación de
+verdad, use una empresa de pruebas.
 
 ### Sobre los tests dorados
 

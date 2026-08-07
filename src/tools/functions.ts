@@ -141,6 +141,13 @@ async function execute(ctx: SiigoContext, fn: FunctionSpec, raw: Record<string, 
     };
 
     if (!result.ok) payload.problemas = result.problems;
+    if (result.moduleUnavailable) {
+      payload.moduloNoDisponible = true;
+      payload.sugerencia =
+        `La empresa ${company.path} no tiene habilitado el modulo que necesita ${fn.name}. `
+        + 'No es un error de parametros: reintentar no cambiara el resultado. Use otra funcion '
+        + 'o habilite el modulo en SIIGO.';
+    }
     if (result.dialogTitle) payload.dialogoDeSiigo = result.dialogTitle;
     if (result.errorLogPath) payload.logDeErrores = result.errorLogPath;
 
