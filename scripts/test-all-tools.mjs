@@ -2,7 +2,7 @@
 /**
  * Ejercita LAS 56 herramientas del servidor contra una instalacion real de SIIGO.
  *
- *   $env:SIIGO_USUARIO='ADMON'; $env:SIIGO_CLAVE='1111'; node scripts/test-all-tools.mjs
+ *   $env:SIIGO_USUARIO='TU_USUARIO'; $env:SIIGO_CLAVE='TU_CLAVE'; node scripts/test-all-tools.mjs
  *
  * Que hace con cada grupo:
  *

@@ -1,7 +1,7 @@
 // Prueba end-to-end contra la instalacion real.
 //
 // Prueba positiva (necesita credenciales validas de SIIGO), por variables de entorno:
-//   $env:SIIGO_USUARIO='ADMON'; $env:SIIGO_CLAVE='1111'; node scripts/e2e.mjs
+//   $env:SIIGO_USUARIO='TU_USUARIO'; $env:SIIGO_CLAVE='TU_CLAVE'; node scripts/e2e.mjs
 // o por argumentos:
 //   node scripts/e2e.mjs <usuario> <clave> [empresa]
 //

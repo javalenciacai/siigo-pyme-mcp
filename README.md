@@ -8,7 +8,7 @@ automático de empresas y resultados ya parseados a JSON.
 ```
 Agente: "dame los terceros de la empresa 02"
   → siigo_getter(empresa: "02")
-  → EXCELSIIGO.exe Z:\SIIWI02\ 2026 GETTER L ADMON **** ... Terceros.xlsx
+  → EXCELSIIGO.exe Z:\SIIWI02\ 2026 GETTER L USUARIO **** ... Terceros.xlsx
   → { ok: true, archivo: "...", totalFilas: 1240, columnas: [...], filas: [...] }
 ```
 
@@ -46,8 +46,8 @@ Si prefiere pasar las credenciales por entorno en lugar de guardarlas:
       "command": "npx",
       "args": ["-y", "siigo-pyme-mcp"],
       "env": {
-        "SIIGO_USUARIO": "ADMON",
-        "SIIGO_CLAVE": "1111"
+        "SIIGO_USUARIO": "TU_USUARIO",
+        "SIIGO_CLAVE": "TU_CLAVE"
       }
     }
   }
@@ -63,7 +63,7 @@ Si prefiere pasar las credenciales por entorno en lugar de guardarlas:
 4. Ya puede llamar a cualquier función: `siigo_getmov`, `siigo_getter`, `siigo_getinv`...
 
 ```
-siigo_set_credentials(usuario: "ADMON", clave: "1111")
+siigo_set_credentials(usuario: "TU_USUARIO", clave: "TU_CLAVE")
 siigo_set_company_alias(empresa: "Z:\\SIIWI01\\", alias: "Inmunotek")
 siigo_getmov(empresa: "Inmunotek", fechaInicial: "0101", fechaFinal: "0131", tipoComprobante: "F")
 ```
@@ -125,14 +125,14 @@ Se guarda en `%APPDATA%\siigo-pyme-mcp\config.json` (se puede reubicar con
 ```json
 {
   "installations": ["D:\\Siigo"],
-  "defaultCredentials": { "user": "ADMON", "password": "1111" },
+  "defaultCredentials": { "user": "TU_USUARIO", "password": "TU_CLAVE" },
   "companies": {
     "Z:\\SIIWI01\\": { "alias": "Inmunotek" },
     "Z:\\SIIWI02\\": { "alias": "Comercial", "user": "CONTA", "password": "2222", "year": "2025" }
   },
   "outputDir": "C:\\SiigoMCP\\out",
   "norma": "L",
-  "timeoutMs": 300000
+  "timeoutMs": 180000
 }
 ```
 
@@ -194,8 +194,8 @@ credenciales válidas corre la **prueba positiva**, que ejecuta un `GETTER` real
 el `.xlsx` exista, pese más de cero y traiga columnas y filas legibles:
 
 ```bash
-SIIGO_USUARIO=ADMON SIIGO_CLAVE=1111 npm run test:e2e     # bash
-$env:SIIGO_USUARIO='ADMON'; $env:SIIGO_CLAVE='1111'; npm run test:e2e   # PowerShell
+SIIGO_USUARIO=TU_USUARIO SIIGO_CLAVE=TU_CLAVE npm run test:e2e     # bash
+$env:SIIGO_USUARIO='TU_USUARIO'; $env:SIIGO_CLAVE='TU_CLAVE'; npm run test:e2e   # PowerShell
 ```
 
 `test:tools` recorre las 56 herramientas: invoca las 9 de apoyo, **ejecuta de verdad** las 29
