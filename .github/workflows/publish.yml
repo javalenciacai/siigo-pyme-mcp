@@ -1,0 +1,223 @@
+# Workflow: Publish - npm + MCP Registry + GitHub Release
+# Trigger: push de un tag v* (ej: v0.1.0, v1.0.0).
+#
+# FLUJO DE RELEASE:
+#   1. Subir la version en package.json (npm version <patch|minor|major> --no-git-tag-version)
+#   2. Commit + push a main
+#   3. git tag v<X>.<Y>.<Z>
+#   4. git push origin v<X>.<Y>.<Z>
+#   5. Este workflow valida, publica a npm, publica al MCP Registry y crea la release.
+#
+# CONFIGURACION PREVIA REQUERIDA (una sola vez):
+#   - Secret NPM_TOKEN del repositorio: token de tipo Automation creado en
+#     https://www.npmjs.com/settings/james.valencia/tokens
+#     (un token Automation salta el 2FA, que es lo que necesita un runner)
+#   - MCP Registry: no requiere setup, autentica con el OIDC de GitHub Actions
+#
+# server.json se sincroniza automaticamente con la version del package.json: si difieren,
+# el MCP Registry rechaza la publicacion con 422.
+
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version override (ej: 0.1.1). Si vacio, usa la del package.json.'
+        required: false
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Job 1: validar todo antes de publicar (mismo bloque que CI)
+  # ---------------------------------------------------------------------
+  validate:
+    name: validate
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      should_publish: ${{ steps.gate.outputs.should_publish }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck + test + build + smoke
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+          npm run test:smoke
+
+      # Si el workflow lo disparo un tag, la version sale del tag.
+      # Si se disparo a mano, del input o del package.json.
+      - name: Determinar version a publicar
+        id: bump
+        shell: bash
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "Publicando version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: "Gate - package.json debe coincidir con la version derivada"
+        id: gate
+        shell: bash
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          if [[ "$PKG" != "${{ steps.bump.outputs.version }}" ]]; then
+            echo "::error::package.json dice $PKG pero el publish seria ${{ steps.bump.outputs.version }}"
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+
+      - name: "Gate - server.json debe estar sincronizado con package.json"
+        shell: bash
+        run: |
+          node -e "
+            const pkg = require('./package.json');
+            const srv = require('./server.json');
+            const errores = [];
+            if (srv.version !== pkg.version) {
+              errores.push('server.json.version es ' + srv.version + ' y package.json.version es ' + pkg.version);
+            }
+            for (const p of srv.packages ?? []) {
+              if (p.version !== pkg.version) {
+                errores.push('server.json packages[' + p.identifier + '].version es ' + p.version);
+              }
+              if (p.identifier !== pkg.name) {
+                errores.push('server.json packages[].identifier es ' + p.identifier + ' y el paquete se llama ' + pkg.name);
+              }
+            }
+            if (srv.name !== pkg.mcpName) {
+              errores.push('server.json.name es ' + srv.name + ' y package.json.mcpName es ' + pkg.mcpName);
+            }
+            if (errores.length) {
+              for (const e of errores) console.error('::error::' + e);
+              console.error('Corrija server.json y vuelva a etiquetar: el MCP Registry rechaza con 422 si no coincide.');
+              process.exit(1);
+            }
+            console.log('OK: server.json sincronizado con package.json en la version ' + pkg.version);
+          "
+
+  # ---------------------------------------------------------------------
+  # Job 2: publicar a npm con provenance (firma sigstore)
+  # ---------------------------------------------------------------------
+  publish-npm:
+    name: publish to npm
+    needs: validate
+    if: needs.validate.outputs.should_publish == 'true'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      # id-token: write lo exige --provenance para generar el token OIDC del build.
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org/'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # prepublishOnly ya corre build + test; --ignore-scripts no se usa a proposito.
+      - name: Publish
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify
+        shell: bash
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          # El CDN de npm tarda ~30 s en reflejar una version nueva; se reintenta.
+          for i in 1 2 3 4 5; do
+            if OUT=$(npm view "siigo-pyme-mcp@$VERSION" version 2>&1); then
+              echo "OK: siigo-pyme-mcp@$VERSION publicado (intento $i)"
+              exit 0
+            fi
+            echo "Intento $i fallo: $OUT"
+            sleep 10
+          done
+          echo "::error::la version $VERSION no aparecio en npm tras 5 intentos"
+          exit 1
+
+  # ---------------------------------------------------------------------
+  # Job 3: publicar al MCP Registry oficial via github-oidc
+  # Corre en ubuntu: el instalador de mcp-publisher resuelve la plataforma con uname.
+  # ---------------------------------------------------------------------
+  publish-mcp-registry:
+    name: publish to MCP Registry
+    needs: [validate, publish-npm]
+    if: needs.validate.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
+            | tar xz mcp-publisher
+          ./mcp-publisher --version
+
+      - name: Authenticate via OIDC
+        run: ./mcp-publisher login github-oidc
+
+      - name: Validate server.json
+        run: ./mcp-publisher validate
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish
+
+  # ---------------------------------------------------------------------
+  # Job 4: crear la GitHub Release con notas automaticas
+  # ---------------------------------------------------------------------
+  release:
+    name: github release
+    needs: [publish-npm, publish-mcp-registry]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          draft: false

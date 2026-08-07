@@ -1,0 +1,44 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.javalenciacai/siigo-pyme-mcp",
+  "description": "SIIGO Pyme as MCP tools: the 47 ExcelSIIGO export/import functions, with company discovery and parsed results.",
+  "repository": {
+    "url": "https://github.com/javalenciacai/siigo-pyme-mcp.git",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "siigo-pyme-mcp",
+      "version": "0.1.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "description": "Usuario de SIIGO (hasta 8 caracteres). Alternativa a guardarlo con la herramienta siigo_set_credentials.",
+          "isRequired": false,
+          "name": "SIIGO_USUARIO"
+        },
+        {
+          "description": "Clave del usuario de SIIGO (hasta 8 caracteres). Alternativa a guardarla con la herramienta siigo_set_credentials.",
+          "isRequired": false,
+          "isSecret": true,
+          "name": "SIIGO_CLAVE"
+        },
+        {
+          "description": "Anio de proceso por defecto en SIIGO, 4 digitos. Por defecto el anio actual.",
+          "isRequired": false,
+          "name": "SIIGO_ANO"
+        },
+        {
+          "description": "Carpeta donde guardar la configuracion del servidor. Por defecto %APPDATA%\\siigo-pyme-mcp.",
+          "isRequired": false,
+          "name": "SIIGO_MCP_CONFIG_DIR"
+        }
+      ]
+    }
+  ]
+}

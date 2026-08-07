@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.log
+*.tsbuildinfo
+.env
+.smoke-config/
+*.tgz
+.DS_Store
+.vscode/
+.idea/
+# Estado local de las herramientas de agente, no forma parte del proyecto
+.atl/
+.remember/
+graphify-out/

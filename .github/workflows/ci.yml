@@ -1,0 +1,65 @@
+# Workflow: CI - Validacion continua
+# Trigger: cada PR contra main, y cada push directo a main.
+# Objetivo: typecheck + tests + build + smoke antes de permitir merge.
+# NO publica nada. Para publicar, ver publish.yml (requiere tag v*).
+#
+# Corre en windows-latest a proposito: el paquete declara `os: ["win32"]` porque envuelve
+# un ejecutable de Windows, y validar en el sistema operativo real evita sorpresas.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: typecheck + test + build + smoke
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # El smoke levanta el servidor por stdio y comprueba el contrato MCP. No ejecuta
+      # EXCELSIIGO.exe, asi que no necesita SIIGO instalado en el runner.
+      - name: Smoke (handshake MCP y 56 herramientas)
+        run: npm run test:smoke
+
+      - name: Verificar contenido del paquete
+        shell: bash
+        run: |
+          set -e
+          npm pack --dry-run 2>&1 | tee pack.log
+          # El tarball solo debe llevar dist, README, LICENSE, server.json y package.json.
+          if grep -qiE 'notice[[:space:]]+[0-9.]+[kKmM]?B[[:space:]]+(src|scripts|tests)/' pack.log; then
+            echo "::error::el paquete incluye archivos de desarrollo"
+            exit 1
+          fi
+          echo "OK: el paquete solo lleva artefactos de distribucion"
