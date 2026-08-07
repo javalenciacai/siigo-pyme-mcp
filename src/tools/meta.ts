@@ -9,6 +9,8 @@ import { z } from 'zod';
 import { FUNCTIONS, findFunction } from '../catalog/functions.js';
 import { companyKey, configPath, saveConfig } from '../config/store.js';
 import type { SiigoContext } from '../context.js';
+import { runDoctor } from '../doctor/checks.js';
+import { formatReport } from '../doctor/report.js';
 import { EXE_NAME } from '../siigo/discovery.js';
 import { DEFAULT_LIMIT, readSheet } from '../xlsx/read.js';
 
@@ -22,6 +24,33 @@ function fail(message: string) {
 }
 
 export function registerMetaTools(server: McpServer, ctx: SiigoContext): void {
+  // Va primera a proposito: es la que resuelve el "no funciona y no se por que", y aparecer al
+  // principio de tools/list la hace mas facil de encontrar.
+  server.registerTool(
+    'siigo_doctor',
+    {
+      title: 'Diagnosticar el entorno de SIIGO',
+      description:
+        'Comprueba que este equipo pueda ejecutar SIIGO: Windows, instalaciones con EXCELSIIGO.exe, Microsoft Excel, '
+        + 'sesion de escritorio activa, configuracion, credenciales, empresas accesibles y margen frente al limite de '
+        + '50 caracteres en las rutas. No ejecuta EXCELSIIGO.exe ni toca la contabilidad. Ejecutela primero cuando '
+        + 'una funcion falle sin una explicacion clara.',
+      inputSchema: {
+        incluirEmpresas: z
+          .boolean()
+          .optional()
+          .describe('Descubrir las empresas, que implica escanear discos y tarda mas. Por defecto si.'),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    async ({ incluirEmpresas }) => {
+      const informe = await runDoctor({ ctx, incluirEmpresas: incluirEmpresas ?? true });
+      // Nunca se marca isError: un veredicto "no-listo" es un diagnostico exitoso, no un fallo
+      // de la herramienta. El agente decide que hacer leyendo `veredicto` y `siguientesPasos`.
+      return json({ ...informe, textoLegible: formatReport(informe) });
+    },
+  );
+
   server.registerTool(
     'siigo_list_installations',
     {

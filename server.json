@@ -6,12 +6,12 @@
     "url": "https://github.com/javalenciacai/siigo-pyme-mcp.git",
     "source": "github"
   },
-  "version": "0.1.5",
+  "version": "0.2.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "siigo-pyme-mcp",
-      "version": "0.1.5",
+      "version": "0.2.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
@@ -32,6 +32,11 @@
           "description": "Anio de proceso por defecto en SIIGO, 4 digitos. Por defecto el anio actual.",
           "isRequired": false,
           "name": "SIIGO_ANO"
+        },
+        {
+          "description": "core (por defecto) expone 11 herramientas; all expone una por cada una de las 47 funciones.",
+          "isRequired": false,
+          "name": "SIIGO_TOOLS"
         },
         {
           "description": "Carpeta donde guardar la configuracion del servidor. Por defecto %APPDATA%\\siigo-pyme-mcp.",
