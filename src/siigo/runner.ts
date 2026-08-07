@@ -305,7 +305,10 @@ async function runFunctionUnqueued(req: RunRequest): Promise<RunResult> {
 
   if (!log.exists && problems.length === 0 && !dialogTitle) {
     problems.push(
-      `El ejecutable no escribio el log "${logPath}". Suele indicar que no llego a arrancar (falta de sesion interactiva o ruta demasiado larga).`,
+      `El ejecutable no escribio el log "${logPath}", asi que no llego a procesar nada. Causas conocidas: `
+      + 'la empresa esta abierta en otra sesion de SIIGO Pyme (cierre las ventanas de SIIGO y reintente), '
+      + 'la licencia no se encuentra o esta vencida, no hay sesion de escritorio interactiva, '
+      + 'o alguna ruta supera los 50 caracteres que admite el CLI.',
     );
   }
 

@@ -14,7 +14,7 @@ const CODIGOS: Record<string, string> = {
   '002': 'Nombre de funcion no definido en ExcelSiigo.',
   '016': 'Usuario o clave de SIIGO incorrectos.',
   '020': 'El modulo que necesita esta funcion no esta instalado en esta empresa.',
-  '070': 'No se pudo abrir o localizar un archivo requerido.',
+  '070': 'La empresa no esta instalada o RutaEmpresa no apunta a una empresa de SIIGO valida.',
   '081': 'Los parametros de la funcion tienen errores (orden o formato del argv).',
   '105': 'La empresa no tiene habilitado el modulo que necesita esta funcion.',
 };
