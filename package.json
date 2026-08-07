@@ -1,6 +1,6 @@
 {
   "name": "siigo-pyme-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Servidor MCP para SIIGO Pyme: expone las 47 funciones de EXCELSIIGO.exe como herramientas (movimiento contable, terceros, inventarios, activos, nomina e informes).",
   "keywords": [
     "mcp",

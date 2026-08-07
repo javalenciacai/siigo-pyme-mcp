@@ -1,10 +1,17 @@
+import { createRequire } from 'node:module';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SiigoContext } from './context.js';
 import { registerFunctionTools } from './tools/functions.js';
 import { registerMetaTools } from './tools/meta.js';
 
-export const SERVER_NAME = 'siigo-pyme-mcp';
-export const SERVER_VERSION = '0.1.0';
+// La version se lee del package.json en vez de duplicarla aqui: al publicar se sube con
+// `npm version`, y una constante escrita a mano se queda atras sin que nada lo detecte.
+// Se usa createRequire y no un import de JSON para no arrastrar el package.json dentro de
+// dist/ y alterar el rootDir de la compilacion.
+const pkg = createRequire(import.meta.url)('../package.json') as { name: string; version: string };
+
+export const SERVER_NAME = pkg.name;
+export const SERVER_VERSION = pkg.version;
 
 export function createServer(): McpServer {
   const server = new McpServer(

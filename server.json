@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.javalenciacai/siigo-pyme-mcp",
-  "description": "SIIGO Pyme as MCP tools: the 47 ExcelSIIGO export/import functions, with company discovery and parsed results.",
+  "description": "SIIGO Pyme as MCP tools: the 47 ExcelSIIGO functions, plus company discovery.",
   "repository": {
     "url": "https://github.com/javalenciacai/siigo-pyme-mcp.git",
     "source": "github"
   },
-  "version": "0.1.0",
+  "version": "0.1.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "siigo-pyme-mcp",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

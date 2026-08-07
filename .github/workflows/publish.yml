@@ -117,6 +117,11 @@ jobs:
             if (srv.name !== pkg.mcpName) {
               errores.push('server.json.name es ' + srv.name + ' y package.json.mcpName es ' + pkg.mcpName);
             }
+            // El MCP Registry limita la descripcion a 100 caracteres y rechaza con 422.
+            // Se comprueba aqui para no descubrirlo despues de haber publicado ya en npm.
+            if ((srv.description ?? '').length > 100) {
+              errores.push('server.json.description tiene ' + srv.description.length + ' caracteres y el maximo del MCP Registry es 100');
+            }
             if (errores.length) {
               for (const e of errores) console.error('::error::' + e);
               console.error('Corrija server.json y vuelva a etiquetar: el MCP Registry rechaza con 422 si no coincide.');
@@ -126,11 +131,45 @@ jobs:
           "
 
   # ---------------------------------------------------------------------
-  # Job 2: publicar a npm con provenance (firma sigstore)
+  # Job 2: validar server.json CONTRA EL REGISTRY, antes de tocar npm.
+  #
+  # El registry aplica reglas que no se pueden deducir del esquema local (por ejemplo,
+  # description de 100 caracteres como maximo) y responde 422. Si esto corriera despues
+  # del publish, la version ya estaria en npm y no se puede republicar: habria que subir
+  # de version solo para arreglar un campo de metadatos.
+  #
+  # Corre en ubuntu: el instalador de mcp-publisher resuelve la plataforma con uname.
+  # ---------------------------------------------------------------------
+  validate-registry:
+    name: validate server.json (MCP Registry)
+    needs: validate
+    if: needs.validate.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" \
+            | tar xz mcp-publisher
+          ./mcp-publisher --version
+
+      - name: Authenticate via OIDC
+        run: ./mcp-publisher login github-oidc
+
+      - name: Validate server.json
+        run: ./mcp-publisher validate
+
+  # ---------------------------------------------------------------------
+  # Job 3: publicar a npm con provenance (firma sigstore)
   # ---------------------------------------------------------------------
   publish-npm:
     name: publish to npm
-    needs: validate
+    needs: [validate, validate-registry]
     if: needs.validate.outputs.should_publish == 'true'
     runs-on: windows-latest
     permissions:
@@ -176,8 +215,9 @@ jobs:
           exit 1
 
   # ---------------------------------------------------------------------
-  # Job 3: publicar al MCP Registry oficial via github-oidc
-  # Corre en ubuntu: el instalador de mcp-publisher resuelve la plataforma con uname.
+  # Job 4: publicar al MCP Registry oficial via github-oidc.
+  # Va despues de npm porque el Registry apunta al paquete: si publicara primero,
+  # anunciaria una version que todavia no se puede instalar.
   # ---------------------------------------------------------------------
   publish-mcp-registry:
     name: publish to MCP Registry
@@ -200,14 +240,11 @@ jobs:
       - name: Authenticate via OIDC
         run: ./mcp-publisher login github-oidc
 
-      - name: Validate server.json
-        run: ./mcp-publisher validate
-
       - name: Publish to MCP Registry
         run: ./mcp-publisher publish
 
   # ---------------------------------------------------------------------
-  # Job 4: crear la GitHub Release con notas automaticas
+  # Job 5: crear la GitHub Release con notas automaticas
   # ---------------------------------------------------------------------
   release:
     name: github release
