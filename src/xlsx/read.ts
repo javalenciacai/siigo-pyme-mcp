@@ -14,13 +14,17 @@ export interface ReadOptions {
   offset?: number;
   /** Maximo de filas a devolver. */
   limit?: number;
+  /** Fila 1-based donde estan los encabezados. Por defecto se detecta sola. */
+  headerRow?: number;
 }
 
 export interface SheetPage {
   sheetName: string;
   sheetNames: string[];
   columns: string[];
-  /** Total de filas de datos de la hoja, sin contar el encabezado. */
+  /** Fila 1-based que se uso como encabezado. */
+  headerRow: number;
+  /** Total de filas de datos de la hoja, sin contar el encabezado ni el banner. */
   rowCount: number;
   offset: number;
   rows: Record<string, string | number | boolean | null>[];
@@ -31,10 +35,16 @@ export interface SheetPage {
 export const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 
-/** Convierte una celda de ExcelJS a un valor JSON plano. */
+/**
+ * Convierte una celda de ExcelJS a un valor JSON plano.
+ *
+ * Las cadenas se recortan: SIIGO viene de COBOL y rellena los campos de texto con espacios
+ * hasta su ancho fijo, asi que un nombre llega como `"OTONIEL               "`.
+ */
 function cellValue(value: ExcelJS.CellValue): string | number | boolean | null {
   if (value === null || value === undefined) return null;
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   if (typeof value === 'object') {
     if ('text' in value && typeof value.text === 'string') return value.text;
@@ -45,6 +55,40 @@ function cellValue(value: ExcelJS.CellValue): string | number | boolean | null {
     if ('error' in value) return String(value.error);
   }
   return String(value);
+}
+
+/** Cuantas filas se inspeccionan como maximo buscando el encabezado. */
+const MAX_HEADER_SCAN = 20;
+
+/**
+ * Localiza la fila de encabezados.
+ *
+ * Los modelos de SIIGO no empiezan por los titulos: ponen el nombre de la empresa en la
+ * fila 1, el nombre del modelo en la 2, dos filas vacias, y los encabezados en la 5. Las
+ * dos primeras son celdas combinadas, asi que ExcelJS devuelve el mismo texto repetido en
+ * todas las columnas; eso las distingue de un encabezado real, cuyos valores son distintos
+ * entre si. Asumir la fila 1 devolvia el nombre de la empresa como nombre de cada columna.
+ */
+function findHeaderRow(worksheet: ExcelJS.Worksheet, width: number): number {
+  const last = Math.min(MAX_HEADER_SCAN, worksheet.rowCount);
+
+  for (let r = 1; r <= last; r++) {
+    const row = worksheet.getRow(r);
+    const values: string[] = [];
+    for (let c = 1; c <= width; c++) {
+      const v = cellValue(row.getCell(c).value);
+      if (v !== null && String(v).length > 0) values.push(String(v));
+    }
+
+    // Fila vacia o casi vacia: no es el encabezado.
+    if (values.length < Math.max(2, Math.ceil(width * 0.3))) continue;
+    // Banner combinado: un unico texto repetido en toda la fila.
+    if (new Set(values).size < 2) continue;
+
+    return r;
+  }
+
+  return 1;
 }
 
 /** Encabezado legible; las columnas sin titulo quedan como `col3`, `col4`... */
@@ -92,12 +136,12 @@ export async function readSheet(filePath: string, options: ReadOptions = {}): Pr
   const limit = Math.min(Math.max(1, options.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
 
   const width = worksheet.actualColumnCount || worksheet.columnCount;
-  const headerRow = worksheet.getRow(1);
-  const columns = headerNames(headerRow, width);
+  const headerRow = options.headerRow ?? findHeaderRow(worksheet, width);
+  const columns = headerNames(worksheet.getRow(headerRow), width);
 
-  // La fila 1 es el encabezado, asi que las filas de datos empiezan en la 2.
-  const rowCount = Math.max(0, worksheet.rowCount - 1);
-  const firstDataRow = 2 + offset;
+  // Los datos empiezan justo debajo del encabezado; el banner que va encima no cuenta.
+  const rowCount = Math.max(0, worksheet.rowCount - headerRow);
+  const firstDataRow = headerRow + 1 + offset;
   const lastDataRow = Math.min(worksheet.rowCount, firstDataRow + limit - 1);
 
   const rows: Record<string, string | number | boolean | null>[] = [];
@@ -113,11 +157,12 @@ export async function readSheet(filePath: string, options: ReadOptions = {}): Pr
     if (!empty) rows.push(record);
   }
 
-  const consumed = offset + (lastDataRow - firstDataRow + 1);
+  const consumed = offset + Math.max(0, lastDataRow - firstDataRow + 1);
   return {
     sheetName: worksheet.name,
     sheetNames,
     columns,
+    headerRow,
     rowCount,
     offset,
     rows,

@@ -19,7 +19,7 @@ Agente: "dame los terceros de la empresa 02"
 | **Windows** | SIIGO Pyme solo existe en Windows. |
 | **SIIGO Pyme instalado** | Se necesita `EXCELSIIGO.exe` (por defecto en `C:\Siigo`). |
 | **Microsoft Excel instalado** | SIIGO genera los `.xlsx` con Excel por COM, a través de `SiigoExcel.exe`. Sin Excel no se produce ningún archivo. |
-| **Sesión de escritorio activa** | Consecuencia de lo anterior: no funciona como servicio de Windows, ni por SSH sin sesión, ni en un contenedor. |
+| **Sesión de escritorio activa** | Consecuencia de lo anterior: no funciona como servicio de Windows, ni por SSH sin sesión, ni en un contenedor. Durante cada ejecución verás aparecer la ventana de progreso de SIIGO y Excel: **no se pueden ocultar**, con la ventana oculta el proceso se cuelga sin generar nada. |
 | **Node.js 18 o superior** | Para ejecutarlo con `npx`. |
 
 ## Instalación
@@ -112,6 +112,11 @@ exportación admiten además `filasPreview`.
 Las funciones `GET*` devuelven la ruta del `.xlsx`, el total de filas, las columnas y las
 primeras 50 filas ya parseadas, con un `siguienteOffset` para continuar con `siigo_read_xlsx`.
 
+Los modelos de SIIGO no empiezan por los títulos: llevan el nombre de la empresa en la fila 1,
+el del modelo en la 2, dos filas vacías, y los encabezados en la 5. El lector detecta esa fila
+automáticamente y recorta el relleno de espacios que arrastra COBOL. Si algún modelo despista a
+la heurística, `siigo_read_xlsx` acepta `filaEncabezado` para forzarla.
+
 ## Configuración
 
 Se guarda en `%APPDATA%\siigo-pyme-mcp\config.json` (se puede reubicar con
@@ -145,6 +150,13 @@ Nacen del ejecutable de SIIGO, no del servidor:
   No hay forma de evitarlo desde fuera. El servidor sí la mantiene fuera de logs, mensajes de
   error y respuestas MCP.
 - **Una ejecución a la vez.** El CLI no tolera instancias simultáneas; el servidor las encola.
+- **Ante un error abre un cuadro de diálogo y espera un clic**, sin escribir el log. El servidor
+  vigila el título de la ventana del proceso y, en cuanto reconoce un diálogo de error, cancela
+  la ejecución y devuelve ese título: es el único sitio donde SIIGO explica qué pasó cuando no
+  llega a escribir nada.
+- **Las exportaciones tardan.** Un `GETTER` de mil terceros ronda el minuto. El servidor emite
+  notificaciones de progreso para que el cliente no aborte la llamada por silencio, y corta a
+  los 180 segundos por defecto (`timeoutMs` en la configuración).
 - **Rutas de 50 caracteres.** Se aplica al `.xlsx` de salida y al log. El servidor genera
   nombres cortos y avisa antes de invocar si una ruta se pasa.
 - **Requiere Excel y sesión interactiva**, por el uso de COM.
@@ -161,15 +173,24 @@ Nacen del ejecutable de SIIGO, no del servidor:
 ```bash
 npm install
 npm run typecheck
-npm test               # 111 tests, incluidos los 47 dorados contra los ejemplos del manual
+npm test               # 115 tests, incluidos los 47 dorados contra los ejemplos del manual
 npm run build
 npm run test:smoke     # handshake MCP y verificación de las 56 herramientas
-npm run test:e2e -- ADMON 1111 01   # ejecuta GETTER de verdad contra una empresa
+npm run test:e2e       # prueba negativa: exige que un fallo se reporte como fallo
 ```
 
-`npm run test:e2e` sin argumentos usa credenciales inválidas a propósito, para comprobar que
-un fallo se reporta como fallo y no como éxito silencioso. Es el único script que necesita
-SIIGO instalado; el resto corre en cualquier máquina, incluida la de CI.
+`test:e2e` es el único script que necesita SIIGO instalado; el resto corre en cualquier
+máquina, incluida la de CI.
+
+Sin credenciales corre la **prueba negativa**: usa unas inválidas a propósito y exige que el
+servidor reporte el fallo, que es justo lo que el binario no hace por su cuenta. Con
+credenciales válidas corre la **prueba positiva**, que ejecuta un `GETTER` real y verifica que
+el `.xlsx` exista, pese más de cero y traiga columnas y filas legibles:
+
+```bash
+SIIGO_USUARIO=ADMON SIIGO_CLAVE=1111 npm run test:e2e     # bash
+$env:SIIGO_USUARIO='ADMON'; $env:SIIGO_CLAVE='1111'; npm run test:e2e   # PowerShell
+```
 
 ### Sobre los tests dorados
 

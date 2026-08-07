@@ -284,16 +284,26 @@ export function registerMetaTools(server: McpServer, ctx: SiigoContext): void {
         offset: z.number().int().min(0).optional().describe('Fila de datos desde la que empezar, 0-based. Por defecto 0.'),
         limite: z.number().int().min(1).max(500).optional().describe(`Maximo de filas a devolver. Por defecto ${DEFAULT_LIMIT}.`),
         hoja: z.union([z.string(), z.number()]).optional().describe('Nombre o indice 1-based de la hoja. Por defecto la primera.'),
+        filaEncabezado: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe(
+            'Fila 1-based donde estan los titulos de las columnas. Por defecto se detecta sola: '
+            + 'los modelos de SIIGO llevan el nombre de la empresa y del modelo encima de los encabezados.',
+          ),
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ ruta, offset, limite, hoja }) => {
+    async ({ ruta, offset, limite, hoja, filaEncabezado }) => {
       try {
-        const page = await readSheet(ruta, { offset, limit: limite, sheet: hoja });
+        const page = await readSheet(ruta, { offset, limit: limite, sheet: hoja, headerRow: filaEncabezado });
         return json({
           archivo: ruta,
           hoja: page.sheetName,
           hojasDisponibles: page.sheetNames,
+          filaEncabezado: page.headerRow,
           columnas: page.columns,
           totalFilas: page.rowCount,
           offset: page.offset,

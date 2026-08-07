@@ -10,6 +10,12 @@
  * 2. Termina con codigo 0 aunque falle (por ejemplo con `081`), asi que el veredicto
  *    combina codigo de salida, contenido del log y existencia del archivo generado.
  * 3. No tolera ejecuciones simultaneas: todas las corridas pasan por una cola serial.
+ * 4. Ante un error NO termina: abre un cuadro de dialogo modal ("SIIGO ha encontrado la
+ *    siguiente inconsistencia") y espera indefinidamente a que alguien pulse Aceptar, sin
+ *    escribir el log. Un servidor desatendido se quedaria colgado hasta el timeout, con la
+ *    cola bloqueada y una ventana huerfana en el escritorio del usuario. Por eso se vigila
+ *    el titulo de la ventana del proceso y se aborta en cuanto aparece un dialogo de error,
+ *    reportando ese titulo, que es el unico sitio donde SIIGO dice que fue mal.
  *
  * Ademas exige Microsoft Excel instalado y una sesion de escritorio interactiva, porque
  * delega la generacion del `.xlsx` a `SiigoExcel.exe`, que usa Excel por COM.
@@ -37,6 +43,12 @@ export interface RunRequest {
   /** Carpeta donde dejar los `.xlsx` generados y los logs de error. */
   outputDir: string;
   timeoutMs: number;
+  /**
+   * Se invoca periodicamente mientras el ejecutable trabaja. Sirve para emitir progreso
+   * al cliente MCP: sin senales de vida, un cliente con el timeout por defecto de 60 s
+   * aborta cualquier exportacion grande aunque el servidor siga esperando.
+   */
+  onProgress?: (elapsedMs: number) => void;
 }
 
 export interface RunResult {
@@ -45,6 +57,8 @@ export interface RunResult {
   problems: string[];
   exitCode: number | null;
   timedOut: boolean;
+  /** Titulo del cuadro de dialogo que bloqueo la ejecucion, si aparecio uno. */
+  dialogTitle: string | null;
   durationMs: number;
   /** Linea de comando ejecutada, con la clave enmascarada. */
   commandLine: string;
@@ -236,7 +250,13 @@ async function runFunctionUnqueued(req: RunRequest): Promise<RunResult> {
   await clearStale(outputPath);
 
   const startedAt = Date.now();
-  const { exitCode, timedOut } = await spawnAndWait(req.exePath, argv, req.installationDir, req.timeoutMs);
+  const { exitCode, timedOut, dialogTitle } = await spawnAndWait(
+    req.exePath,
+    argv,
+    req.installationDir,
+    req.timeoutMs,
+    req.onProgress,
+  );
   const durationMs = Date.now() - startedAt;
 
   const log = await readSiigoLog(logPath);
@@ -244,23 +264,41 @@ async function runFunctionUnqueued(req: RunRequest): Promise<RunResult> {
   const excelResult = await readSiigoExcelResult(req.installationDir, startedAt);
 
   const problems: string[] = [];
+
+  if (dialogTitle) {
+    problems.push(
+      `SIIGO abrio un cuadro de dialogo y se quedo esperando a que alguien lo cerrara: "${dialogTitle}". `
+      + 'Se cancelo la ejecucion. Ese titulo es el mensaje de error de SIIGO; la causa mas frecuente es '
+      + 'usuario o clave incorrectos, un anio de proceso que la empresa no tiene abierto, o parametros '
+      + 'fuera de rango. Cuando esto ocurre el ejecutable no escribe el log.',
+    );
+  }
+
   if (timedOut) problems.push(`La ejecucion supero el limite de ${Math.round(req.timeoutMs / 1000)} s y fue cancelada.`);
-  if (exitCode !== 0 && exitCode !== null) problems.push(`El ejecutable termino con codigo ${exitCode}.`);
+  // Tras matar el proceso el codigo de salida es ruido, no informacion.
+  if (exitCode !== 0 && exitCode !== null && !dialogTitle && !timedOut) {
+    problems.push(`El ejecutable termino con codigo ${exitCode}.`);
+  }
   problems.push(...log.errors);
   if (excelResult && !excelResult.success) problems.push(`SiigoExcel: ${excelResult.resultMessage}`);
 
-  if (req.fn.kind === 'export') {
+  // Con un dialogo de por medio ya se sabe la causa; enumerar consecuencias solo la tapa.
+  if (req.fn.kind === 'export' && !dialogTitle) {
     if (outputBytes === null) {
+      // Si el log ya explica que fallo, apuntar a Excel confundiria: el archivo falta como
+      // consecuencia de ese error, no por un problema de instalacion.
       problems.push(
-        `No se genero el archivo "${outputPath}". Revise que Microsoft Excel este instalado y que haya una sesion de escritorio activa: `
-        + 'EXCELSIIGO.exe delega la generacion del xlsx a SiigoExcel.exe, que usa Excel por COM.',
+        log.errors.length > 0
+          ? `Ademas, no se genero el archivo "${outputPath}".`
+          : `No se genero el archivo "${outputPath}". Revise que Microsoft Excel este instalado y que haya una sesion de escritorio activa: `
+            + 'EXCELSIIGO.exe delega la generacion del xlsx a SiigoExcel.exe, que usa Excel por COM.',
       );
     } else if (outputBytes === 0) {
       problems.push(`El archivo "${outputPath}" quedo vacio (0 bytes).`);
     }
   }
 
-  if (!log.exists && problems.length === 0) {
+  if (!log.exists && problems.length === 0 && !dialogTitle) {
     problems.push(
       `El ejecutable no escribio el log "${logPath}". Suele indicar que no llego a arrancar (falta de sesion interactiva o ruta demasiado larga).`,
     );
@@ -271,6 +309,7 @@ async function runFunctionUnqueued(req: RunRequest): Promise<RunResult> {
     problems,
     exitCode,
     timedOut,
+    dialogTitle,
     durationMs,
     commandLine,
     logPath,
@@ -283,30 +322,112 @@ async function runFunctionUnqueued(req: RunRequest): Promise<RunResult> {
   };
 }
 
+/**
+ * Titulos que delatan un cuadro de dialogo de error esperando un clic.
+ *
+ * El observado en la practica es "SIIGO ha encontrado la siguiente inconsistencia". Se
+ * incluyen otras formulas habituales del producto. Un titulo que no encaje aqui se deja
+ * pasar: puede ser una ventana de progreso legitima durante una exportacion larga.
+ */
+const DIALOG_TITLE_PATTERNS = [
+  /inconsistencia/i,
+  /\berrors?\b/i,
+  /advertencia/i,
+  /\baviso\b/i,
+  /confirmar|confirmaci/i,
+  /atenci[oó]n/i,
+];
+
+/** Titulo de la ventana principal del proceso, o null si no tiene ninguna. */
+async function windowTitleOf(pid: number): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      'tasklist',
+      ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH', '/V'],
+      { windowsHide: true },
+    );
+    // La ultima columna del CSV de `tasklist /V` es el titulo de la ventana.
+    const line = stdout.trim().split(/\r?\n/)[0] ?? '';
+    const fields = line.match(/"([^"]*)"/g);
+    if (!fields || fields.length === 0) return null;
+    const title = fields[fields.length - 1]!.slice(1, -1).trim();
+    return title === 'N/A' || title.length === 0 ? null : title;
+  } catch {
+    return null;
+  }
+}
+
+const POLL_MS = 2_000;
+/** Un dialogo debe verse en dos sondeos seguidos: evita matar por una ventana transitoria. */
+const DIALOG_CONFIRMATIONS = 2;
+
 function spawnAndWait(
   exePath: string,
   argv: string[],
   cwd: string,
   timeoutMs: number,
-): Promise<{ exitCode: number | null; timedOut: boolean }> {
+  onProgress?: (elapsedMs: number) => void,
+): Promise<{ exitCode: number | null; timedOut: boolean; dialogTitle: string | null }> {
   return new Promise((resolve, reject) => {
     // stdio ignorado a proposito: ver la nota 1 del encabezado del archivo.
-    const child = spawn(exePath, argv, { cwd, stdio: 'ignore', windowsHide: true });
+    //
+    // windowsHide NO se activa, aunque seria lo natural para un servidor: SIIGO abre una
+    // ventana de progreso ("IYG-SIIGO Generacion de modelo ...") y despues conduce Excel
+    // por COM. Con la ventana oculta el proceso se queda colgado sin escribir el log ni
+    // generar el xlsx; con ella visible el mismo comando termina en ~50 s. Es el precio de
+    // automatizar una aplicacion de escritorio: durante la ejecucion se ven las ventanas.
+    const child = spawn(exePath, argv, { cwd, stdio: 'ignore', windowsHide: false });
 
+    const startedAt = Date.now();
     let timedOut = false;
+    let dialogTitle: string | null = null;
+    let seenTimes = 0;
+    let finished = false;
+    let polling = false;
+
     const timer = setTimeout(() => {
       timedOut = true;
       if (child.pid) killTree(child.pid);
     }, timeoutMs);
 
-    child.on('error', (err) => {
+    const poller = setInterval(() => {
+      if (finished || polling || !child.pid) return;
+      polling = true;
+
+      onProgress?.(Date.now() - startedAt);
+
+      void windowTitleOf(child.pid)
+        .then((title) => {
+          if (finished) return;
+          if (title && DIALOG_TITLE_PATTERNS.some((re) => re.test(title))) {
+            seenTimes += 1;
+            if (seenTimes >= DIALOG_CONFIRMATIONS) {
+              dialogTitle = title;
+              if (child.pid) killTree(child.pid);
+            }
+          } else {
+            seenTimes = 0;
+          }
+        })
+        .finally(() => {
+          polling = false;
+        });
+    }, POLL_MS);
+
+    const cleanup = () => {
+      finished = true;
       clearTimeout(timer);
+      clearInterval(poller);
+    };
+
+    child.on('error', (err) => {
+      cleanup();
       reject(new Error(`No se pudo ejecutar "${exePath}": ${err.message}`));
     });
 
     child.on('close', (code) => {
-      clearTimeout(timer);
-      resolve({ exitCode: code, timedOut });
+      cleanup();
+      resolve({ exitCode: code, timedOut, dialogTitle });
     });
   });
 }

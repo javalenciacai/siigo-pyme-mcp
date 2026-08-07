@@ -45,7 +45,9 @@ const EMPTY: SiigoConfig = {
   companies: {},
   outputDir: DEFAULT_OUTPUT_DIR,
   norma: 'L',
-  timeoutMs: 300_000,
+  // 3 minutos: suficiente para una exportacion grande y lo bastante corto para no dejar la
+  // cola bloqueada mucho rato si SIIGO se queda esperando en un dialogo que no reconocimos.
+  timeoutMs: 180_000,
 };
 
 export function configDir(): string {

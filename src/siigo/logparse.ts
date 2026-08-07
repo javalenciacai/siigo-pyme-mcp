@@ -12,6 +12,7 @@ import iconv from 'iconv-lite';
 /** Codigos de error del CLI vistos en el manual y en ejecuciones reales. */
 const CODIGOS: Record<string, string> = {
   '002': 'Nombre de funcion no definido en ExcelSiigo.',
+  '016': 'Usuario o clave de SIIGO incorrectos.',
   '070': 'No se pudo abrir o localizar un archivo requerido.',
   '081': 'Los parametros de la funcion tienen errores (orden o formato del argv).',
 };

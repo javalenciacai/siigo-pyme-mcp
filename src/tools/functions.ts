@@ -53,12 +53,48 @@ export function registerFunctionTools(server: McpServer, ctx: SiigoContext): voi
       },
       // El esquema se construye en tiempo de ejecucion, asi que el SDK no puede inferir
       // el tipo del argumento; se normaliza dentro de `splitInput`.
-      (async (raw: Record<string, unknown>) => execute(ctx, fn, raw)) as never,
+      (async (raw: Record<string, unknown>, extra: ToolExtra) => execute(ctx, fn, raw, extra)) as never,
     );
   }
 }
 
-async function execute(ctx: SiigoContext, fn: FunctionSpec, raw: Record<string, unknown>) {
+/** Lo que el SDK entrega al callback y que aqui se usa para reportar progreso. */
+interface ToolExtra {
+  _meta?: { progressToken?: string | number };
+  sendNotification?: (n: {
+    method: 'notifications/progress';
+    params: { progressToken: string | number; progress: number; message?: string };
+  }) => Promise<void>;
+}
+
+/**
+ * Emite progreso mientras SIIGO trabaja.
+ *
+ * Los clientes MCP cancelan una llamada tras ~60 s de silencio, y una exportacion de un
+ * anio completo tarda mas. Cada notificacion reinicia esa cuenta. Solo se envia si el
+ * cliente pidio seguimiento mandando un `progressToken`.
+ */
+function progressReporter(fn: FunctionSpec, extra: ToolExtra): ((elapsedMs: number) => void) | undefined {
+  const token = extra?._meta?.progressToken;
+  const send = extra?.sendNotification;
+  if (token === undefined || !send) return undefined;
+
+  return (elapsedMs: number) => {
+    const segundos = Math.round(elapsedMs / 1000);
+    void send({
+      method: 'notifications/progress',
+      params: {
+        progressToken: token,
+        progress: segundos,
+        message: `${fn.name} en curso (${segundos} s)...`,
+      },
+    }).catch(() => {
+      // Si el cliente ya no escucha, el progreso no importa: la corrida sigue.
+    });
+  };
+}
+
+async function execute(ctx: SiigoContext, fn: FunctionSpec, raw: Record<string, unknown>, extra: ToolExtra) {
   const { common, params } = splitInput(fn, raw);
 
   try {
@@ -85,6 +121,7 @@ async function execute(ctx: SiigoContext, fn: FunctionSpec, raw: Record<string, 
       params,
       outputDir: config.outputDir,
       timeoutMs: config.timeoutMs,
+      onProgress: progressReporter(fn, extra),
     });
 
     const payload: Record<string, unknown> = {
@@ -104,6 +141,7 @@ async function execute(ctx: SiigoContext, fn: FunctionSpec, raw: Record<string, 
     };
 
     if (!result.ok) payload.problemas = result.problems;
+    if (result.dialogTitle) payload.dialogoDeSiigo = result.dialogTitle;
     if (result.errorLogPath) payload.logDeErrores = result.errorLogPath;
 
     if (fn.kind === 'export' && result.outputPath) {
@@ -114,6 +152,7 @@ async function execute(ctx: SiigoContext, fn: FunctionSpec, raw: Record<string, 
       if (result.ok && limite > 0) {
         try {
           const page = await readSheet(result.outputPath, { limit: limite });
+          payload.filaEncabezado = page.headerRow;
           payload.columnas = page.columns;
           payload.totalFilas = page.rowCount;
           payload.filas = page.rows;
