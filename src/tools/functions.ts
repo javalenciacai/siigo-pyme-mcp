@@ -53,13 +53,13 @@ export function registerFunctionTools(server: McpServer, ctx: SiigoContext): voi
       },
       // El esquema se construye en tiempo de ejecucion, asi que el SDK no puede inferir
       // el tipo del argumento; se normaliza dentro de `splitInput`.
-      (async (raw: Record<string, unknown>, extra: ToolExtra) => execute(ctx, fn, raw, extra)) as never,
+      (async (raw: Record<string, unknown>, extra: ToolExtra) => executeFunction(ctx, fn, raw, extra)) as never,
     );
   }
 }
 
 /** Lo que el SDK entrega al callback y que aqui se usa para reportar progreso. */
-interface ToolExtra {
+export interface ToolExtra {
   _meta?: { progressToken?: string | number };
   sendNotification?: (n: {
     method: 'notifications/progress';
@@ -94,7 +94,16 @@ function progressReporter(fn: FunctionSpec, extra: ToolExtra): ((elapsedMs: numb
   };
 }
 
-async function execute(ctx: SiigoContext, fn: FunctionSpec, raw: Record<string, unknown>, extra: ToolExtra) {
+/**
+ * Ejecuta una funcion del catalogo. Es el camino unico: lo usan tanto las herramientas
+ * dedicadas del perfil `all` como el despachador `siigo_run_function` del perfil `core`.
+ */
+export async function executeFunction(
+  ctx: SiigoContext,
+  fn: FunctionSpec,
+  raw: Record<string, unknown>,
+  extra: ToolExtra,
+) {
   const { common, params } = splitInput(fn, raw);
 
   try {
@@ -140,7 +149,15 @@ async function execute(ctx: SiigoContext, fn: FunctionSpec, raw: Record<string, 
       },
     };
 
-    if (!result.ok) payload.problemas = result.problems;
+    if (!result.ok) {
+      payload.problemas = result.problems;
+      // Cuando el CLI no llego a producir nada, el fallo casi nunca esta en los parametros:
+      // falta Excel, falta sesion de escritorio, o una ruta paso de los 50 caracteres.
+      const sinProducto = result.problems.some((p) => /no se genero el archivo|no escribio el log/i.test(p));
+      if (sinProducto && !result.moduleUnavailable) {
+        payload.sugerencia = 'Ejecute siigo_doctor para saber cual de los requisitos del equipo falta.';
+      }
+    }
     if (result.moduleUnavailable) {
       payload.moduloNoDisponible = true;
       payload.sugerencia =

@@ -49,7 +49,8 @@ const { SIIGO_USUARIO: _u, SIIGO_CLAVE: _c, ...limpio } = process.env;
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: [path.join(process.cwd(), 'dist', 'index.js')],
-  env: { ...limpio, SIIGO_MCP_CONFIG_DIR: dir },
+  // Perfil `all`: este script invoca las herramientas por su nombre (siigo_getter), no el despachador.
+  env: { ...limpio, SIIGO_MCP_CONFIG_DIR: dir, SIIGO_TOOLS: 'all' },
 });
 
 const client = new Client({ name: 'e2e', version: '1.0.0' });

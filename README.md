@@ -7,10 +7,14 @@ automático de empresas y resultados ya parseados a JSON.
 
 ```
 Agente: "dame los terceros de la empresa 02"
-  → siigo_getter(empresa: "02")
+  → siigo_run_function(funcion: "GETTER", empresa: "02")
   → EXCELSIIGO.exe Z:\SIIWI02\ 2026 GETTER L USUARIO **** ... Terceros.xlsx
   → { ok: true, archivo: "...", totalFilas: 1240, columnas: [...], filas: [...] }
 ```
+
+Se autodiagnostica: `npx -y siigo-pyme-mcp --doctor` dice si el equipo puede ejecutar SIIGO y qué
+falta, y `--print-config` escupe el bloque de configuración exacto para su cliente MCP. Las dos
+cosas funcionan **antes** de registrar nada.
 
 ## Requisitos
 
@@ -24,20 +28,17 @@ Agente: "dame los terceros de la empresa 02"
 
 ## Instalación
 
-No hace falta instalar nada: se ejecuta con `npx`. Añádalo a la configuración MCP de su cliente.
+No hace falta instalar nada: se ejecuta con `npx`. Tres pasos, y el propio paquete guía cada uno.
 
-```json
-{
-  "mcpServers": {
-    "siigo": {
-      "command": "npx",
-      "args": ["-y", "siigo-pyme-mcp"]
-    }
-  }
-}
+```bash
+npx -y siigo-pyme-mcp --doctor                      # 1. ¿puede este equipo ejecutar SIIGO?
+npx -y siigo-pyme-mcp --print-config --cliente hermes   # 2. el bloque exacto a pegar
+# 3. reinicie el cliente MCP y repita --doctor
 ```
 
-Si prefiere pasar las credenciales por entorno en lugar de guardarlas:
+`--print-config` conoce **hermes**, Claude Desktop, Claude Code, VS Code y Cursor, e imprime
+además los primitivos del protocolo para cualquier cliente que no esté en la lista. Sin argumento
+`--cliente` los muestra todos. Para el caso genérico:
 
 ```json
 {
@@ -54,19 +55,42 @@ Si prefiere pasar las credenciales por entorno en lugar de guardarlas:
 }
 ```
 
+El `-y` **no es opcional**: sin él npx pide confirmación por consola, se queda esperando, y el
+cliente MCP interpreta ese silencio como que el servidor no arrancó.
+
+### Si la instalación falla
+
+| Síntoma | Causa real |
+|---|---|
+| `npm error EBADPLATFORM ... wanted {"os":"win32"}` | Se está instalando fuera de Windows (WSL, contenedor, Linux). Hay que registrarlo en la máquina Windows donde está SIIGO; `--force` no ayuda, porque sin SIIGO ni Excel no hay nada que ejecutar. |
+| El cliente dice que el servidor no arrancó, sin más detalle | Falta el `-y` en npx. |
+| `'npx' no se reconoce como un comando`, o `ENOENT` al lanzarlo | El cliente MCP no tiene `npx` en su PATH. Use `--print-config --absoluto`, que emite un bloque apuntando a `node.exe` y al `dist/index.js` instalado, con las rutas reales de esa máquina. |
+| Arranca, pero toda función falla sin generar archivo | Falta Excel, falta la sesión de escritorio, o alguna ruta pasa de 50 caracteres. Ejecute `--doctor`. |
+
+En hermes hay un detalle que rompe la configuración escrita a mano: en su `config.yaml`, `args` y
+`env` son **cadenas JSON dentro del YAML**, no una lista y un mapa YAML. `--print-config --cliente
+hermes` ya lo emite así.
+
 ## Primeros pasos
 
-1. **`siigo_list_installations`** — comprueba qué instalaciones de SIIGO se detectaron.
+1. **`siigo_doctor`** — verifica el entorno y dice qué falta. Es la primera llamada ante cualquier fallo.
 2. **`siigo_list_companies`** — lista las empresas `SIIWI01`..`SIIWI99` disponibles.
 3. **`siigo_set_credentials`** — guarda usuario y clave. Sin indicar empresa, la credencial
    se aplica a **todas**, que es lo más cómodo si usa el mismo usuario en todas ellas.
-4. Ya puede llamar a cualquier función: `siigo_getmov`, `siigo_getter`, `siigo_getinv`...
+4. **`siigo_describe_function`** — los parámetros exactos de la función que va a usar.
+5. **`siigo_run_function`** — ejecútela.
 
 ```
 siigo_set_credentials(usuario: "TU_USUARIO", clave: "TU_CLAVE")
 siigo_set_company_alias(empresa: "Z:\\SIIWI01\\", alias: "Inmunotek")
-siigo_getmov(empresa: "Inmunotek", fechaInicial: "0101", fechaFinal: "0131", tipoComprobante: "F")
+siigo_describe_function(funcion: "GETMOV")
+siigo_run_function(funcion: "GETMOV", empresa: "Inmunotek",
+                   params: { fechaInicial: "0101", fechaFinal: "0131", tipoComprobante: "F" })
 ```
+
+El paso 4 no es ceremonia: el CLI acepta un parámetro mal formateado, lo registra como `081` y
+**termina con código 0**, así que un error de parámetros se parece a un éxito. Es la única forma
+en la que este servidor puede devolver datos equivocados.
 
 ## Cómo encuentra sus empresas
 
@@ -85,10 +109,21 @@ Puede referirse a una empresa por su ruta (`Z:\SIIWI01\`), por su número (`01`)
 
 ## Herramientas
 
+Por defecto expone **11**. Cada esquema de herramienta viaja en *cada* llamada al modelo, así que
+las 47 funciones como herramientas independientes cuestan unos 35 000 tokens por llamada —
+medidos: 140 116 caracteres de `tools/list` frente a 8 927 del perfil por defecto, un 94 % menos.
+Se controla con `SIIGO_TOOLS`:
+
+| `SIIGO_TOOLS` | Herramientas | Coste de `tools/list` |
+|---|---|---|
+| `core` (por defecto) | 11: las de apoyo más `siigo_run_function` | ~2 200 tokens |
+| `all` | 57: una por cada función | ~35 000 tokens |
+
 ### De apoyo
 
 | Herramienta | Para qué |
 |---|---|
+| `siigo_doctor` | Verifica Windows, SIIGO, Excel, sesión de escritorio, credenciales, empresas y el límite de 50 caracteres. No ejecuta nada de SIIGO. |
 | `siigo_list_installations` | Instalaciones de SIIGO detectadas. |
 | `siigo_list_companies` | Empresas disponibles, con alias y si tienen credenciales. |
 | `siigo_list_functions` | Catálogo de las 47 funciones, filtrable por grupo. |
@@ -101,13 +136,25 @@ Puede referirse a una empresa por su ruta (`Z:\SIIWI01\`), por su número (`01`)
 
 ### De función
 
-Una por cada función del CLI, con el nombre en minúsculas: `siigo_getmov`, `siigo_pushmov`,
-`siigo_getter`, `siigo_getinv`, `siigo_getcta`, `siigo_getsal`, `siigo_getinf`... Use
-`siigo_list_functions` para verlas todas.
+En el perfil `core`, una sola: **`siigo_run_function`**, que ejecuta cualquiera de las 47 por
+nombre. En `all`, una por función con el nombre en minúsculas (`siigo_getmov`, `siigo_getter`,
+`siigo_pushmov`...). Las dos rutas construyen exactamente el mismo `argv`, y hay un test que lo
+compara lado a lado.
 
 Todas aceptan los mismos campos comunes — `empresa` (obligatorio), `anio`, `norma`,
 `instalacion`, `usuario`, `clave` — más los parámetros propios de la función. Las de
 exportación admiten además `filasPreview`.
+
+`siigo_run_function` exige **`confirmarEscritura: true`** para las funciones `PUSH*`. Al colapsar
+47 herramientas en una se pierde el `destructiveHint` por función, y una importación escribe en la
+contabilidad sin que el servidor pueda deshacerla; la protección pasa a ser explícita.
+
+### Recursos y prompt
+
+`siigo://guia/inicio` trae la misma guía que `--help`, y `siigo://funcion/{nombre}` la firma de
+una función en markdown, para consultarla sin gastar una llamada de herramienta. El prompt
+`siigo_puesta_en_marcha` recorre el arranque completo. Los recursos no cuestan contexto salvo que
+el cliente los pida.
 
 Las funciones `GET*` devuelven la ruta del `.xlsx`, el total de filas, las columnas y las
 primeras 50 filas ya parseadas, con un `siguienteOffset` para continuar con `siigo_read_xlsx`.
@@ -139,7 +186,38 @@ Se guarda en `%APPDATA%\siigo-pyme-mcp\config.json` (se puede reubicar con
 Precedencia de las credenciales: valores de la llamada → `SIIGO_USUARIO`/`SIIGO_CLAVE` →
 credencial de la empresa → credencial por defecto.
 
-`outputDir` debe ser **corto**: SIIGO limita la ruta del `.xlsx` a 50 caracteres.
+`outputDir` debe ser **corto**: SIIGO limita la ruta del `.xlsx` a 50 caracteres. `siigo_doctor`
+calcula el margen que queda y avisa antes de que el CLI empiece a truncar en silencio.
+
+### Variables de entorno
+
+| Variable | Para qué |
+|---|---|
+| `SIIGO_USUARIO`, `SIIGO_CLAVE` | Credenciales, como alternativa a guardarlas en el `config.json`. |
+| `SIIGO_ANO` | Año de proceso por defecto, 4 dígitos. |
+| `SIIGO_TOOLS` | `core` (por defecto) o `all`. Ver [Herramientas](#herramientas). |
+| `SIIGO_MCP_CONFIG_DIR` | Reubica la carpeta de configuración. |
+
+## Diagnóstico
+
+```bash
+npx -y siigo-pyme-mcp --doctor            # informe legible; exit 1 si el veredicto es NO LISTO
+npx -y siigo-pyme-mcp --doctor --json     # el mismo informe para consumo de máquina
+npx -y siigo-pyme-mcp --doctor --sin-empresas   # omite el escaneo de discos, más rápido
+```
+
+Diez comprobaciones, todas se ejecutan siempre: plataforma, Node, instalaciones de SIIGO, Excel,
+sesión de escritorio, configuración, credenciales, empresas accesibles, carpeta de salida y
+procesos de SIIGO o Excel vivos. Cada resultado que no esté en `[ ok ]` viene con una acción
+concreta, y la última línea es siempre el paso que desbloquea.
+
+Nunca ejecuta `EXCELSIIGO.exe`, no lanza Excel y no escribe ningún archivo. Detecta Excel por el
+registro (`App Paths`, y el ProgID COM como respaldo) y la sesión por el número de sesión del
+propio proceso: instanciar Excel para comprobar que existe se colgaría en una máquina sin
+escritorio, que es justo el fallo que hay que diagnosticar. La clave nunca aparece en el informe;
+hay un test que serializa el informe completo y falla si la encuentra.
+
+La misma información está disponible como herramienta MCP, `siigo_doctor`, una vez registrado.
 
 ## Limitaciones
 
@@ -178,9 +256,9 @@ Nacen del ejecutable de SIIGO, no del servidor:
 ```bash
 npm install
 npm run typecheck
-npm test               # 115 tests, incluidos los 47 dorados contra los ejemplos del manual
+npm test               # 220 tests, incluidos los dorados contra los ejemplos del manual
 npm run build
-npm run test:smoke     # handshake MCP y verificación de las 56 herramientas
+npm run test:smoke     # handshake MCP en los dos perfiles, más --doctor --json
 npm run test:e2e       # prueba negativa: exige que un fallo se reporte como fallo
 npm run test:tools     # ejercita LAS 56 herramientas contra una instalación real
 ```
@@ -198,7 +276,7 @@ SIIGO_USUARIO=TU_USUARIO SIIGO_CLAVE=TU_CLAVE npm run test:e2e     # bash
 $env:SIIGO_USUARIO='TU_USUARIO'; $env:SIIGO_CLAVE='TU_CLAVE'; npm run test:e2e   # PowerShell
 ```
 
-`test:tools` recorre las 56 herramientas: invoca las 9 de apoyo, **ejecuta de verdad** las 29
+`test:tools` recorre las herramientas del perfil `all`: invoca las de apoyo, **ejecuta de verdad** las 29
 exportaciones contra la empresa, y prueba las 18 importaciones **solo por su ruta de
 validación**. Las importaciones escriben en la contabilidad y ese script no puede deshacerlo,
 así que comprueba el esquema, la resolución de empresa y credenciales y la construcción del
