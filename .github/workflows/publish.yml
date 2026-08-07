@@ -14,8 +14,9 @@
 #     (un token Automation salta el 2FA, que es lo que necesita un runner)
 #   - MCP Registry: no requiere setup, autentica con el OIDC de GitHub Actions
 #
-# server.json se sincroniza automaticamente con la version del package.json: si difieren,
-# el MCP Registry rechaza la publicacion con 422.
+# server.json debe llevar a mano la misma version que package.json. El workflow lo verifica y
+# aborta antes de publicar nada si no coinciden: el MCP Registry rechaza con 422, y es mejor
+# fallar antes de haber subido el paquete a npm que quedar a medias.
 
 name: Publish
 
@@ -47,12 +48,12 @@ jobs:
       should_publish: ${{ steps.gate.outputs.should_publish }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: 'npm'
@@ -138,10 +139,10 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org/'
@@ -188,7 +189,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install mcp-publisher
         run: |
@@ -217,7 +218,7 @@ jobs:
       contents: write
     steps:
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           draft: false
