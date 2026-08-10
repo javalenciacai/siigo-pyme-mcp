@@ -183,8 +183,17 @@ Se guarda en `%APPDATA%\siigo-pyme-mcp\config.json` (se puede reubicar con
 }
 ```
 
-Precedencia de las credenciales: valores de la llamada → `SIIGO_USUARIO`/`SIIGO_CLAVE` →
-credencial de la empresa → credencial por defecto.
+**Precedencia**, la misma para las credenciales y para el año: valor de la llamada → variable de
+entorno → valor de la empresa → valor por defecto (o el año actual).
+
+Consecuencia que conviene tener presente: si define `SIIGO_ANO` en el entorno del cliente MCP, ese
+año manda sobre el campo `year` de cualquier empresa. Para que una empresa trabaje en otro año,
+pase `anio` en la llamada, o quite `SIIGO_ANO` del entorno y deje solo los `year` por empresa.
+`siigo_doctor` avisa cuando detecta esa situación, porque consultar el año contable equivocado no
+se nota en la respuesta.
+
+> Hasta la 0.2.0 el año de la empresa ganaba a `SIIGO_ANO`, al contrario que las credenciales. Si
+> usaba las dos fuentes a la vez, revise qué año va a consultar antes de actualizar a 0.3.0.
 
 `outputDir` debe ser **corto**: SIIGO limita la ruta del `.xlsx` a 50 caracteres. `siigo_doctor`
 calcula el margen que queda y avisa antes de que el CLI empiece a truncar en silencio.

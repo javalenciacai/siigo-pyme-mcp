@@ -205,8 +205,8 @@ describe('runDoctor', () => {
     expect(check(r, 'credenciales').datos?.usuario).toBe('DELENV');
   });
 
-  it('avisa de la precedencia incoherente entre SIIGO_ANO y el anio por empresa', async () => {
-    // En store.ts el entorno gana para las credenciales y pierde para el anio.
+  it('avisa cuando SIIGO_ANO anula el anio configurado para una empresa', async () => {
+    // Consultar el anio contable equivocado no se nota en la respuesta, asi que conviene decirlo.
     const r = await runDoctor({
       env: envBase({ env: { SIIGO_USUARIO: 'U', SIIGO_CLAVE: 'C', SIIGO_ANO: '2026' } }),
       ctx: ctxFalso({
@@ -215,7 +215,18 @@ describe('runDoctor', () => {
     });
     const c = check(r, 'credenciales');
     expect(c.status).toBe('aviso');
-    expect(c.datos?.precedenciaInconsistente).toBe(true);
+    expect(c.datos?.anioDelEntornoAnulaEmpresa).toBe(true);
+    expect(c.siguientePaso).toContain('anio');
+  });
+
+  it('no avisa cuando SIIGO_ANO coincide con el anio de la empresa', async () => {
+    const r = await runDoctor({
+      env: envBase({ env: { SIIGO_USUARIO: 'U', SIIGO_CLAVE: 'C', SIIGO_ANO: '2026' } }),
+      ctx: ctxFalso({
+        config: { ...CONFIG_OK, companies: { 'Z:\\SIIWI01\\': { year: '2026' } } },
+      }),
+    });
+    expect(check(r, 'credenciales').status).toBe('ok');
   });
 
   it('una empresa inaccesible es aviso con el net use concreto', async () => {
