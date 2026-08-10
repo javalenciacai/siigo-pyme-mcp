@@ -128,11 +128,22 @@ export function resolveCredentials(
   return { user, password };
 }
 
-/** Anio de proceso por defecto: el configurado para la empresa, si no el anio actual. */
+/**
+ * Anio de proceso.
+ *
+ * Precedencia identica a la de `resolveCredentials`: valor explicito de la llamada > variable de
+ * entorno > valor por empresa en el config > anio actual. Antes de la 0.3.0 el valor por empresa
+ * ganaba a `SIIGO_ANO`, al contrario que en las credenciales, y esa asimetria hacia impredecible
+ * contra que anio se ejecutaba una funcion.
+ *
+ * Consecuencia a tener presente: si define `SIIGO_ANO` en el entorno del cliente MCP, ese anio
+ * pasa a mandar sobre el campo `year` de cualquier empresa. Para que una empresa trabaje en un
+ * anio distinto del global, pase `anio` en la llamada o quite `SIIGO_ANO` del entorno.
+ */
 export function resolveYear(config: SiigoConfig, companyPath: string, explicit?: string): string {
   if (explicit) return explicit;
+  if (process.env.SIIGO_ANO) return process.env.SIIGO_ANO;
   const perCompany = config.companies[companyKey(companyPath)];
   if (perCompany?.year) return perCompany.year;
-  if (process.env.SIIGO_ANO) return process.env.SIIGO_ANO;
   return String(new Date().getFullYear());
 }

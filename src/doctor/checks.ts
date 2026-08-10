@@ -246,7 +246,7 @@ export async function runDoctor(o: DoctorOptions = {}): Promise<DoctorReport> {
       usuario: usuarioVisible(config, env),
       empresasConCredenciales: conCredenciales,
       empresasTotales: empresas.length,
-      precedenciaInconsistente: precedenciaInconsistente(config, env),
+      anioDelEntornoAnulaEmpresa: anioDelEntornoAnulaEmpresa(config, env),
     };
 
     if (origen === 'ninguno') {
@@ -260,17 +260,17 @@ export async function runDoctor(o: DoctorOptions = {}): Promise<DoctorReport> {
         datos,
       };
     }
-    if (datos.precedenciaInconsistente) {
-      // Incoherencia real de store.ts: para credenciales el entorno gana a la config por
-      // empresa, pero para el anio pierde. Se reporta sin cambiar el comportamiento.
+    if (datos.anioDelEntornoAnulaEmpresa) {
+      // No es un fallo, pero si una sorpresa caras: el anio global manda sobre el de la empresa,
+      // y consultar el anio contable equivocado no se nota en la respuesta.
       return {
         status: 'aviso' as CheckStatus,
         detalle:
-          `Credenciales resueltas por ${origen}, pero SIIGO_ANO y el anio por empresa difieren:`
-          + ' el entorno gana para las credenciales y pierde para el anio.',
+          `Credenciales resueltas por ${origen}. SIIGO_ANO=${env.env['SIIGO_ANO']} anula el anio configurado`
+          + ' para al menos una empresa, porque el entorno tiene mas precedencia.',
         siguientePaso:
-          'Deje una sola fuente para el anio: quite SIIGO_ANO del entorno, o borre el campo "year" de esa empresa'
-          + ` en ${configPath()}, para que el anio de proceso sea predecible.`,
+          `Si alguna empresa debe trabajar en otro anio, pase "anio" en la llamada, o quite SIIGO_ANO del entorno`
+          + ` y deje el campo "year" de cada empresa en ${configPath()}.`,
         bloqueante: false,
         datos,
       };
@@ -440,8 +440,8 @@ function usuarioVisible(config: SiigoConfig, env: DoctorEnv): string | null {
   );
 }
 
-/** `SIIGO_ANO` y un `year` por empresa distintos: la precedencia del anio no coincide con la de las credenciales. */
-function precedenciaInconsistente(config: SiigoConfig, env: DoctorEnv): boolean {
+/** `SIIGO_ANO` definido y alguna empresa con un `year` distinto: el del entorno se impone. */
+function anioDelEntornoAnulaEmpresa(config: SiigoConfig, env: DoctorEnv): boolean {
   const anoEntorno = env.env['SIIGO_ANO'];
   if (!anoEntorno) return false;
   return Object.values(config.companies).some((c) => c.year && c.year !== anoEntorno);
