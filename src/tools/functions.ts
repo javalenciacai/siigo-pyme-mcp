@@ -151,11 +151,14 @@ export async function executeFunction(
 
     if (!result.ok) {
       payload.problemas = result.problems;
-      // Cuando el CLI no llego a producir nada, el fallo casi nunca esta en los parametros:
-      // falta Excel, falta sesion de escritorio, o una ruta paso de los 50 caracteres.
-      const sinProducto = result.problems.some((p) => /no se genero el archivo|no escribio el log/i.test(p));
-      if (sinProducto && !result.moduleUnavailable) {
-        payload.sugerencia = 'Ejecute siigo_doctor para saber cual de los requisitos del equipo falta.';
+      // Solo se remite al diagnostico cuando SIIGO no dejo NINGUNA explicacion: log vacio o sin
+      // lineas de error. Si el log trae un codigo (016 usuario invalido, 081 parametros...), la
+      // causa ya esta dicha y mandar al doctor distrae de lo que hay que arreglar.
+      const sinExplicacion = result.log.errors.length === 0 && !result.dialogTitle;
+      if (sinExplicacion && !result.moduleUnavailable) {
+        payload.sugerencia =
+          'SIIGO no dejo ninguna explicacion en el log. Ejecute siigo_doctor para saber cual de los '
+          + 'requisitos del equipo falta (Excel, sesion de escritorio, limite de 50 caracteres).';
       }
     }
     if (result.moduleUnavailable) {
