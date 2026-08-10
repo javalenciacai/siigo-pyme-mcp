@@ -65,18 +65,26 @@ function primitivos(nombre: string): BloqueConfig {
   };
 }
 
-function hermes(nombre: string): BloqueConfig {
-  // hermes guarda `args` y `env` como STRINGS JSON dentro del YAML, no como lista y mapa
-  // YAML. Escribir YAML idiomatico aqui produce una configuracion que hermes no acepta.
-  const bloque = [
+/**
+ * Bloque YAML de hermes.
+ *
+ * hermes guarda `args` y `env` como STRINGS JSON dentro del YAML, no como lista y mapa YAML.
+ * Escribir YAML idiomatico aqui produce una configuracion que hermes no acepta, y es la clase de
+ * detalle que nadie adivina leyendo la documentacion del protocolo.
+ */
+function bloqueHermes(nombre: string, command: string, args: string[]): string {
+  return [
     'mcp:',
     '  servers:',
     `    ${nombre}:`,
     '      type: stdio',
-    '      command: npx',
-    `      args: '${jsonEnLinea(['-y', SERVER_NAME])}'`,
+    `      command: ${command}`,
+    `      args: '${jsonEnLinea(args)}'`,
     `      env: '${jsonEnLinea(ENV_EJEMPLO)}'`,
   ].join('\n');
+}
+
+function hermes(nombre: string): BloqueConfig {
   return {
     id: 'hermes',
     titulo: 'hermes',
@@ -84,7 +92,7 @@ function hermes(nombre: string): BloqueConfig {
     nota:
       'Ojo: en hermes "args" y "env" son STRINGS JSON dentro del YAML, no una lista y un mapa YAML.'
       + ' Respete las comillas simples exactamente como aparecen. Reinicie la sesion despues de guardar.',
-    bloque,
+    bloque: bloqueHermes(nombre, 'npx', ['-y', SERVER_NAME]),
   };
 }
 
@@ -130,17 +138,34 @@ function cursor(nombre: string): BloqueConfig {
   };
 }
 
-function absoluto(nombre: string): BloqueConfig {
+/**
+ * Variante sin npx, con las rutas reales de esta maquina.
+ *
+ * Respeta el formato del cliente pedido: emitir JSON a alguien que configura hermes en YAML seria
+ * darle un bloque que no puede pegar, que es exactamente el problema que este subcomando resuelve.
+ */
+function absoluto(nombre: string, cliente?: ClientId): BloqueConfig {
   const { node, script } = rutasAbsolutas();
-  const cfg = { mcpServers: { [nombre]: { command: node, args: [script], env: ENV_EJEMPLO } } };
-  return {
-    id: 'absoluto',
-    titulo: 'Sin npx - rutas absolutas de esta maquina',
-    nota:
-      'Uselo si el cliente MCP no encuentra npx en su PATH, o si el arranque de npx tarda tanto que el'
-      + ' cliente se rinde. Las rutas de abajo son las reales de esta instalacion, ya resueltas.',
-    bloque: JSON.stringify(cfg, null, 2),
-  };
+  const nota =
+    'Uselo si el cliente MCP no encuentra npx en su PATH, o si el arranque de npx tarda tanto que el'
+    + ' cliente se rinde. Las rutas de abajo son las reales de esta instalacion, ya resueltas.';
+
+  if (cliente === 'hermes') {
+    return { id: 'absoluto', titulo: 'Sin npx - rutas absolutas de esta maquina (formato hermes)', nota, bloque: bloqueHermes(nombre, node, [script]) };
+  }
+  if (cliente === 'claude-code') {
+    return {
+      id: 'absoluto',
+      titulo: 'Sin npx - rutas absolutas de esta maquina',
+      nota,
+      bloque: `claude mcp add ${nombre} -- "${node}" "${script}"`,
+    };
+  }
+
+  // El resto de clientes soportados usan una de las dos formas JSON.
+  const entrada = { command: node, args: [script], env: ENV_EJEMPLO };
+  const cfg = cliente === 'vscode' ? { servers: { [nombre]: { type: 'stdio', ...entrada } } } : { mcpServers: { [nombre]: entrada } };
+  return { id: 'absoluto', titulo: 'Sin npx - rutas absolutas de esta maquina', nota, bloque: JSON.stringify(cfg, null, 2) };
 }
 
 const CONSTRUCTORES: Record<ClientId, (n: string) => BloqueConfig> = {
@@ -164,7 +189,7 @@ export function printableConfigs(o: PrintConfigOptions = {}): BloqueConfig[] {
     }
   }
 
-  if (o.absoluto) bloques.push(absoluto(nombre));
+  if (o.absoluto) bloques.push(absoluto(nombre, o.cliente));
   return bloques;
 }
 
@@ -178,6 +203,16 @@ export function formatConfigs(bloques: BloqueConfig[]): string {
     l.push(b.bloque);
     l.push('');
   }
+
+  // Dejar los marcadores tal cual es PEOR que no poner env: con credenciales invalidas SIIGO
+  // abre un cuadro de dialogo y se queda esperando un clic, en vez de fallar limpiamente.
+  if (bloques.some((b) => b.bloque.includes('TU_USUARIO'))) {
+    l.push(`Sustituya TU_USUARIO y TU_CLAVE por sus credenciales de SIIGO, o borre "env" por completo`);
+    l.push(`y guardelas luego con la herramienta siigo_set_credentials. Dejar los marcadores tal cual`);
+    l.push(`es peor que no ponerlos: SIIGO rechaza el acceso abriendo un cuadro de dialogo.`);
+    l.push('');
+  }
+
   l.push(`Despues de pegarlo y reiniciar el cliente: npx -y ${SERVER_NAME} --doctor`);
   return `${l.join('\n')}\n`;
 }

@@ -59,6 +59,27 @@ describe('printableConfigs', () => {
     expect(parsePath(entrada.args[0]!).base).toBe('index.js');
   });
 
+  it('--absoluto respeta el formato del cliente pedido', () => {
+    // Darle JSON a quien configura hermes en YAML seria devolverle un bloque que no puede pegar,
+    // que es justo el problema que este subcomando existe para resolver.
+    const abs = printableConfigs({ cliente: 'hermes', absoluto: true }).find((b) => b.id === 'absoluto');
+    expect(abs?.bloque).toContain('mcp:');
+    expect(abs?.bloque).toContain('  servers:');
+    const args = abs!.bloque.match(/args: '(.+)'/)?.[1];
+    expect(parsePath((JSON.parse(args!) as string[])[0]!).base).toBe('index.js');
+    expect(abs!.bloque).toContain(`command: ${process.execPath}`);
+  });
+
+  it('--absoluto para claude-code emite un comando, no un fichero', () => {
+    const abs = printableConfigs({ cliente: 'claude-code', absoluto: true }).find((b) => b.id === 'absoluto');
+    expect(abs?.bloque).toMatch(/^claude mcp add /);
+  });
+
+  it('--absoluto para vscode usa la clave "servers"', () => {
+    const abs = printableConfigs({ cliente: 'vscode', absoluto: true }).find((b) => b.id === 'absoluto');
+    expect(JSON.parse(abs!.bloque)).toHaveProperty('servers');
+  });
+
   it('--nombre cambia la clave con la que se registra', () => {
     const r = printableConfigs({ cliente: 'claude-desktop', nombre: 'siigo-pyme' });
     expect(r.find((b) => b.id === 'claude-desktop')!.bloque).toContain('"siigo-pyme"');
@@ -66,5 +87,13 @@ describe('printableConfigs', () => {
 
   it('formatConfigs cierra recordando el diagnostico', () => {
     expect(formatConfigs(printableConfigs()).trimEnd().split('\n').at(-1)).toContain('--doctor');
+  });
+
+  it('advierte que dejar los marcadores es peor que no poner env', () => {
+    // Con credenciales invalidas SIIGO abre un dialogo modal y espera un clic, en vez de
+    // fallar limpiamente: pegar TU_USUARIO tal cual es el peor de los dos mundos.
+    const salida = formatConfigs(printableConfigs({ cliente: 'hermes' }));
+    expect(salida).toContain('siigo_set_credentials');
+    expect(salida).toMatch(/peor que no ponerlos/);
   });
 });
