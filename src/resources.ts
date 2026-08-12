@@ -13,10 +13,30 @@ import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mc
 import { FUNCTIONS, findFunction } from './catalog/functions.js';
 import { isRequired } from './catalog/types.js';
 import { guiaInicio } from './docs/guia.js';
+import { protocoloAgente } from './docs/protocolo.js';
 import { toolNameFor } from './tools/schema.js';
+import { toolProfile } from './tools/profile.js';
 import { SERVER_NAME, SERVER_VERSION } from './version.js';
 
 export function registerResources(server: McpServer): void {
+  server.registerResource(
+    'protocolo',
+    'siigo://protocolo',
+    {
+      title: 'Protocolo de uso de siigo-pyme-mcp',
+      description:
+        'Por donde empezar, la trampa que produce datos equivocados y que funciones no se pueden deshacer. '
+        + 'Mismo texto que devuelve la herramienta siigo_start_here y que se manda como instructions al '
+        + 'conectar; se ofrece tambien como recurso por si el cliente lee recursos pero no `instructions`.',
+      mimeType: 'text/plain',
+    },
+    () => ({
+      contents: [
+        { uri: 'siigo://protocolo', mimeType: 'text/plain', text: protocoloAgente({ perfil: toolProfile() }) },
+      ],
+    }),
+  );
+
   server.registerResource(
     'guia',
     'siigo://guia/inicio',

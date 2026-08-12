@@ -13,6 +13,7 @@ import type { SiigoContext } from '../context.js';
 import { pickInstallation, resolveCompany } from '../siigo/discovery.js';
 import { runFunction } from '../siigo/runner.js';
 import { DEFAULT_LIMIT, readSheet } from '../xlsx/read.js';
+import { conProtocolo } from './preamble.js';
 import { descriptionFor, inputSchemaFor, toolNameFor } from './schema.js';
 
 interface CommonInput {
@@ -194,14 +195,14 @@ export async function executeFunction(
       }
     }
 
-    return {
+    return conProtocolo(ctx, {
       ...(result.ok ? {} : { isError: true as const }),
       content: [{ type: 'text' as const, text: JSON.stringify(payload, null, 2) }],
-    };
+    });
   } catch (err) {
-    return {
+    return conProtocolo(ctx, {
       isError: true as const,
       content: [{ type: 'text' as const, text: `${fn.name}: ${(err as Error).message}` }],
-    };
+    });
   }
 }

@@ -11,21 +11,58 @@ import { companyKey, configPath, saveConfig } from '../config/store.js';
 import type { SiigoContext } from '../context.js';
 import { runDoctor } from '../doctor/checks.js';
 import { formatReport } from '../doctor/report.js';
+import { protocoloParrafos } from '../docs/protocolo.js';
 import { EXE_NAME } from '../siigo/discovery.js';
 import { DEFAULT_LIMIT, readSheet } from '../xlsx/read.js';
+import { conProtocolo } from './preamble.js';
+import { toolProfile } from './profile.js';
 
 /** Toda respuesta viaja como JSON en un bloque de texto, que es lo que todo cliente MCP entiende. */
-function json(value: unknown) {
+function jsonCrudo(value: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
 }
 
-function fail(message: string) {
+function failCrudo(message: string) {
   return { isError: true, content: [{ type: 'text' as const, text: message }] };
 }
 
 export function registerMetaTools(server: McpServer, ctx: SiigoContext): void {
-  // Va primera a proposito: es la que resuelve el "no funciona y no se por que", y aparecer al
-  // principio de tools/list la hace mas facil de encontrar.
+  // Envuelven jsonCrudo/failCrudo con el preambulo de una sola vez (tools/preamble.ts): es el
+  // camino que llega siempre, al contrario que `instructions` del InitializeResult.
+  const json = (value: unknown) => conProtocolo(ctx, jsonCrudo(value));
+  const fail = (message: string) => conProtocolo(ctx, failCrudo(message));
+
+  // Primera de tools/list a proposito: el punto de entrada explicito para clientes que
+  // descartan `instructions` (ver docs/protocolo.ts). No usa `json()`: su cuerpo ya ES el
+  // protocolo, asi que envolverlo lo duplicaria; marca la entrega directamente.
+  server.registerTool(
+    'siigo_start_here',
+    {
+      title: 'LEER PRIMERO: como usar SIIGO Pyme',
+      description:
+        'Devuelve el protocolo de uso de este servidor: por donde empezar, la trampa que produce datos '
+        + 'equivocados y que funciones no se pueden deshacer. Llamela antes de cualquier otra herramienta '
+        + 'siigo_* en esta conversacion. Es necesaria porque varios clientes MCP descartan las instrucciones '
+        + 'que el servidor manda al conectar, y esta herramienta es el unico canal que llega siempre.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    async () => {
+      ctx.marcarProtocoloEntregado();
+      return jsonCrudo({
+        protocolo: protocoloParrafos({ perfil: toolProfile() }),
+        herramientasDeApoyo: {
+          siigo_doctor: 'diagnostica el entorno cuando algo falla',
+          siigo_list_companies: 'empresas disponibles y si ya tienen credenciales',
+          siigo_list_functions: 'catalogo de las 47 funciones de ExcelSIIGO',
+          siigo_describe_function: 'parametros exactos de una funcion, antes de ejecutarla',
+        },
+      });
+    },
+  );
+
+  // Le sigue "siigo_doctor" a proposito: es la que resuelve el "no funciona y no se por que", y
+  // aparecer temprano en tools/list la hace mas facil de encontrar.
   server.registerTool(
     'siigo_doctor',
     {

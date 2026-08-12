@@ -20,6 +20,7 @@ export type Comando =
   | { tipo: 'ayuda' }
   | { tipo: 'doctor'; json: boolean; empresas: boolean }
   | { tipo: 'config'; json: boolean; cliente?: ClientId; absoluto: boolean; nombre?: string }
+  | { tipo: 'reglas'; json: boolean; cliente?: ClientId; nombre?: string; instalar: boolean; forzar: boolean }
   | { tipo: 'desconocido'; arg: string };
 
 /** Separa `--opcion=valor` en sus dos mitades; devuelve valor `undefined` si no lo trae. */
@@ -32,10 +33,12 @@ function partir(token: string): { nombre: string; valor?: string } {
 export function parseArgs(argv: string[]): Comando {
   if (argv.length === 0) return { tipo: 'servidor' };
 
-  let primario: 'version' | 'ayuda' | 'doctor' | 'config' | null = null;
+  let primario: 'version' | 'ayuda' | 'doctor' | 'config' | 'reglas' | null = null;
   let json = false;
   let empresas = true;
   let absoluto = false;
+  let instalar = false;
+  let forzar = false;
   let cliente: string | undefined;
   let nombre: string | undefined;
 
@@ -68,6 +71,9 @@ export function parseArgs(argv: string[]): Comando {
       case '--print-config':
         primario ??= 'config';
         break;
+      case '--print-agent-rules':
+        primario ??= 'reglas';
+        break;
       case '--json':
         json = true;
         break;
@@ -76,6 +82,12 @@ export function parseArgs(argv: string[]): Comando {
         break;
       case '--absoluto':
         absoluto = true;
+        break;
+      case '--instalar':
+        instalar = true;
+        break;
+      case '--forzar':
+        forzar = true;
         break;
       case '--cliente':
         cliente = siguiente();
@@ -98,6 +110,12 @@ export function parseArgs(argv: string[]): Comando {
       return { tipo: 'desconocido', arg: `--cliente ${cliente} (use: ${CLIENTES.join(', ')})` };
     }
     return { tipo: 'config', json, cliente: cliente as ClientId | undefined, absoluto, nombre };
+  }
+  if (primario === 'reglas') {
+    if (cliente !== undefined && !CLIENTES.includes(cliente as ClientId)) {
+      return { tipo: 'desconocido', arg: `--cliente ${cliente} (use: ${CLIENTES.join(', ')})` };
+    }
+    return { tipo: 'reglas', json, cliente: cliente as ClientId | undefined, nombre, instalar, forzar };
   }
 
   // Solo llegaron modificadores sueltos, sin subcomando: no se sabe que queria el usuario.
@@ -129,6 +147,24 @@ export async function ejecutar(cmd: Comando): Promise<number> {
       const { printableConfigs, formatConfigs } = await import('./cli/printConfig.js');
       const bloques = printableConfigs({ cliente: cmd.cliente, absoluto: cmd.absoluto, nombre: cmd.nombre });
       out(cmd.json ? `${JSON.stringify(bloques, null, 2)}\n` : formatConfigs(bloques));
+      return 0;
+    }
+
+    case 'reglas': {
+      const { printableAgentRules, formatAgentRules, instalarAgentRules } = await import('./cli/agentRules.js');
+
+      if (cmd.instalar) {
+        if (!cmd.cliente) {
+          process.stderr.write(`${SERVER_NAME}: --instalar requiere --cliente.\n`);
+          return 2;
+        }
+        const r = await instalarAgentRules(cmd.cliente, { nombre: cmd.nombre, forzar: cmd.forzar });
+        out(cmd.json ? `${JSON.stringify(r, null, 2)}\n` : `${r.mensaje}\n`);
+        return r.ok ? 0 : 1;
+      }
+
+      const bloques = printableAgentRules({ cliente: cmd.cliente, nombre: cmd.nombre });
+      out(cmd.json ? `${JSON.stringify(bloques, null, 2)}\n` : formatAgentRules(bloques));
       return 0;
     }
 

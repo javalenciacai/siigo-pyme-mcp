@@ -17,6 +17,7 @@ import { FUNCTIONS } from '../catalog/functions.js';
 import type { FunctionSpec } from '../catalog/types.js';
 import type { SiigoContext } from '../context.js';
 import { executeFunction, type ToolExtra } from './functions.js';
+import { conProtocolo } from './preamble.js';
 import { commonInputs, exportInputs, paramsSchemaFor } from './schema.js';
 
 const inputSchema = {
@@ -123,7 +124,9 @@ export function registerDispatchTool(server: McpServer, ctx: SiigoContext): void
     },
     (async (raw: DispatchInput, extra: ToolExtra) => {
       const r = resolverLlamada(raw);
-      if (!r.ok) return fail(r.error);
+      // executeFunction ya envuelve su resultado con el preambulo (camino unico de ejecucion,
+      // ver tools/functions.ts); aqui solo falta el rechazo que ocurre antes de llegar ahi.
+      if (!r.ok) return conProtocolo(ctx, fail(r.error));
       return executeFunction(ctx, r.fn, r.entrada, extra);
     }) as never,
   );

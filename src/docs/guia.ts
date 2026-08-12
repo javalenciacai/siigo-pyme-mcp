@@ -29,7 +29,7 @@ export const VARIABLES: { nombre: string; texto: string }[] = [
   { nombre: 'SIIGO_USUARIO', texto: 'Usuario de SIIGO, hasta 8 caracteres.' },
   { nombre: 'SIIGO_CLAVE', texto: 'Clave del usuario, hasta 8 caracteres.' },
   { nombre: 'SIIGO_ANO', texto: 'Anio de proceso por defecto, 4 digitos. Por defecto el anio actual.' },
-  { nombre: 'SIIGO_TOOLS', texto: 'core (por defecto) expone 11 herramientas; all expone las 57.' },
+  { nombre: 'SIIGO_TOOLS', texto: 'core (por defecto) expone 12 herramientas; all expone las 58.' },
   { nombre: 'SIIGO_MCP_CONFIG_DIR', texto: 'Carpeta de la configuracion. Por defecto %APPDATA%\\siigo-pyme-mcp.' },
 ];
 
@@ -72,6 +72,7 @@ export function guiaInicio(ctx: GuiaContexto): string {
   l.push(`  ${npx}                      habla MCP por stdio. Es el modo que usa el cliente.`);
   l.push(`  ${npx} --doctor             comprueba que el equipo pueda ejecutar SIIGO.`);
   l.push(`  ${npx} --print-config       imprime el bloque de configuracion a pegar en el cliente.`);
+  l.push(`  ${npx} --print-agent-rules  imprime el protocolo de uso para pegar en las reglas del agente.`);
   l.push(`  ${npx} --help               esta ayuda.`);
   l.push(`  ${npx} --version            la version instalada.`);
   l.push('');
@@ -82,14 +83,20 @@ export function guiaInicio(ctx: GuiaContexto): string {
   l.push('  omite el escaneo de discos). Termina con codigo 0, o 1 si el veredicto es NO LISTO.');
   l.push('  --print-config acepta --cliente <hermes|claude-desktop|claude-code|vscode|cursor>, --absoluto');
   l.push('  (sin npx) y --json.');
+  l.push('  --print-agent-rules acepta --cliente, --json y --instalar (escribe el fichero de reglas en la');
+  l.push('  carpeta del cliente cuando se conoce una; --forzar para reemplazar uno existente distinto).');
   l.push('');
 
-  l.push('INSTALACION EN 3 PASOS');
+  l.push('INSTALACION EN 4 PASOS');
   l.push(`  1. ${npx} --doctor`);
   l.push('     Resuelva lo que salga como [fall]. Cada falla dice exactamente que hacer.');
   l.push(`  2. ${npx} --print-config --cliente <su cliente>`);
   l.push('     Pegue el bloque en el fichero que indica la salida y reinicie el cliente MCP.');
-  l.push('  3. Vuelva a ejecutar --doctor, o llame a la herramienta siigo_doctor desde el agente,');
+  l.push(`  3. ${npx} --print-agent-rules --cliente <su cliente>`);
+  l.push('     Registrar el servidor no basta para que el agente sepa usarlo: varios clientes MCP');
+  l.push('     descartan las instrucciones que manda el servidor al conectar. Instale este bloque en la');
+  l.push('     capa de reglas del cliente (skill, AGENTS.md, instrucciones del proyecto).');
+  l.push('  4. Vuelva a ejecutar --doctor, o llame a la herramienta siigo_doctor desde el agente,');
   l.push('     para confirmar que el veredicto es LISTO.');
   l.push('');
 
