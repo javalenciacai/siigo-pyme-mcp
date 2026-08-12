@@ -10,10 +10,22 @@ import { listCompanies, listInstallations, type Company, type Installation } fro
 export class SiigoContext {
   private configCache: SiigoConfig | null = null;
   private discovery: Promise<{ installations: Installation[]; companies: Company[] }> | null = null;
+  // Por proceso, no persistido: en stdio un proceso es una conversacion. Sirve para anteponer
+  // el protocolo de uso una sola vez (ver tools/preamble.ts) sin depender de `instructions` del
+  // InitializeResult, que varios clientes MCP descartan. `invalidate()` NO lo toca: guardar
+  // credenciales no debe hacer que el protocolo se repita.
+  private protocoloEntregado = false;
 
   invalidate(): void {
     this.configCache = null;
     this.discovery = null;
+  }
+
+  /** true la primera vez que se llama en el proceso; despues siempre false. */
+  marcarProtocoloEntregado(): boolean {
+    if (this.protocoloEntregado) return false;
+    this.protocoloEntregado = true;
+    return true;
   }
 
   async config(): Promise<SiigoConfig> {

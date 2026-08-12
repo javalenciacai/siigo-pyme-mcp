@@ -28,12 +28,13 @@ cosas funcionan **antes** de registrar nada.
 
 ## Instalación
 
-No hace falta instalar nada: se ejecuta con `npx`. Tres pasos, y el propio paquete guía cada uno.
+No hace falta instalar nada: se ejecuta con `npx`. Cuatro pasos, y el propio paquete guía cada uno.
 
 ```bash
-npx -y siigo-pyme-mcp --doctor                      # 1. ¿puede este equipo ejecutar SIIGO?
-npx -y siigo-pyme-mcp --print-config --cliente hermes   # 2. el bloque exacto a pegar
-# 3. reinicie el cliente MCP y repita --doctor
+npx -y siigo-pyme-mcp --doctor                            # 1. ¿puede este equipo ejecutar SIIGO?
+npx -y siigo-pyme-mcp --print-config --cliente hermes     # 2. el bloque exacto a pegar
+npx -y siigo-pyme-mcp --print-agent-rules --cliente hermes  # 3. que el agente sepa usarlo
+# 4. reinicie el cliente MCP y repita --doctor
 ```
 
 `--print-config` conoce **hermes**, Claude Desktop, Claude Code, VS Code y Cursor, e imprime
@@ -70,6 +71,32 @@ cliente MCP interpreta ese silencio como que el servidor no arrancó.
 En hermes hay un detalle que rompe la configuración escrita a mano: en su `config.yaml`, `args` y
 `env` son **cadenas JSON dentro del YAML**, no una lista y un mapa YAML. `--print-config --cliente
 hermes` ya lo emite así.
+
+## Si el agente no sabe usarlo
+
+Registrar el servidor no basta para que el agente sepa qué hacer con él. El "cómo usarme" vive en
+tres canales del protocolo MCP, y no todos los clientes los leen:
+
+1. `instructions` del `InitializeResult` — el texto que este servidor manda al conectar.
+2. Recursos (`siigo://guia/inicio`, `siigo://protocolo`) y el prompt `siigo_puesta_en_marcha`.
+3. Los nombres y descripciones de las herramientas — el único canal que **todo** cliente MCP
+   entrega, porque sin él no podría llamarlas.
+
+En hermes, por ejemplo, el canal 1 se pierde por completo: captura el `InitializeResult` solo
+para leer `capabilities` y nunca lee `.instructions` (`tools/mcp_tool.py`, en el comentario junto
+a `self.initialize_result`). Los recursos y prompts del canal 2 son opt-in y ningún agente los
+consulta espontáneamente. Solo queda el canal 3, así que este servidor lo usa a fondo:
+
+- **`siigo_start_here`** es la primera herramienta de `tools/list`, titulada "LEER PRIMERO", y
+  devuelve el protocolo de uso completo.
+- Si el agente no la llama, **la primera respuesta de cualquier otra herramienta `siigo_*`** en
+  el proceso trae el protocolo anexado al final de su contenido, una sola vez.
+- **`npx -y siigo-pyme-mcp --print-agent-rules --cliente <su cliente>`** imprime ese mismo
+  protocolo en el formato de reglas del cliente (una skill con frontmatter para hermes y Claude
+  Code, un bloque para pegar en `AGENTS.md` o las instrucciones del proyecto para el resto), para
+  que llegue **antes** de la primera llamada. Con `--instalar` lo escribe directamente en la
+  carpeta de skills del cliente (por ejemplo `%LOCALAPPDATA%\hermes\skills\siigo-pyme-mcp\SKILL.md`);
+  nunca sobrescribe un fichero existente con contenido distinto salvo que se agregue `--forzar`.
 
 ## Primeros pasos
 
@@ -109,20 +136,21 @@ Puede referirse a una empresa por su ruta (`Z:\SIIWI01\`), por su número (`01`)
 
 ## Herramientas
 
-Por defecto expone **11**. Cada esquema de herramienta viaja en *cada* llamada al modelo, así que
+Por defecto expone **12**. Cada esquema de herramienta viaja en *cada* llamada al modelo, así que
 las 47 funciones como herramientas independientes cuestan unos 35 000 tokens por llamada —
 medidos: 140 116 caracteres de `tools/list` frente a 8 927 del perfil por defecto, un 94 % menos.
 Se controla con `SIIGO_TOOLS`:
 
 | `SIIGO_TOOLS` | Herramientas | Coste de `tools/list` |
 |---|---|---|
-| `core` (por defecto) | 11: las de apoyo más `siigo_run_function` | ~2 200 tokens |
-| `all` | 57: una por cada función | ~35 000 tokens |
+| `core` (por defecto) | 12: las de apoyo más `siigo_run_function` | ~2 200 tokens |
+| `all` | 58: una por cada función | ~35 000 tokens |
 
 ### De apoyo
 
 | Herramienta | Para qué |
 |---|---|
+| `siigo_start_here` | LEER PRIMERO: protocolo de uso completo. Primera de `tools/list` a propósito. |
 | `siigo_doctor` | Verifica Windows, SIIGO, Excel, sesión de escritorio, credenciales, empresas y el límite de 50 caracteres. No ejecuta nada de SIIGO. |
 | `siigo_list_installations` | Instalaciones de SIIGO detectadas. |
 | `siigo_list_companies` | Empresas disponibles, con alias y si tienen credenciales. |

@@ -29,6 +29,7 @@ const entry = path.resolve(here, '..', 'dist', 'index.js');
 
 const FUNCTION_TOOLS = 47;
 const META_TOOLS = [
+  'siigo_start_here',
   'siigo_doctor',
   'siigo_list_installations',
   'siigo_list_companies',
@@ -152,7 +153,7 @@ async function verificarPerfil(profile) {
     );
     const guia = await client.readResource({ uri: 'siigo://guia/inicio' });
     check(
-      (guia.contents[0]?.text ?? '').includes('INSTALACION EN 3 PASOS'),
+      (guia.contents[0]?.text ?? '').includes('INSTALACION EN 4 PASOS'),
       `${profile}: la guia se puede leer y trae los pasos de instalacion`,
     );
     const firma = await client.readResource({ uri: 'siigo://funcion/GETTER' });

@@ -213,6 +213,11 @@ export function formatConfigs(bloques: BloqueConfig[]): string {
     l.push('');
   }
 
+  l.push(
+    'El agente puede seguir sin saber usarlo: varios clientes MCP descartan las instrucciones que manda '
+    + `el servidor. Ejecute "npx -y ${SERVER_NAME} --print-agent-rules --cliente <su cliente>" para el `
+    + 'bloque que le da el protocolo de uso antes de la primera llamada.',
+  );
   l.push(`Despues de pegarlo y reiniciar el cliente: npx -y ${SERVER_NAME} --doctor`);
   return `${l.join('\n')}\n`;
 }

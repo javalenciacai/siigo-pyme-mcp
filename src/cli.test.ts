@@ -25,6 +25,18 @@ describe('parseArgs', () => {
       ['--print-config', '--absoluto', '--nombre', 'siigo-pyme'],
       { tipo: 'config', json: false, cliente: undefined, absoluto: true, nombre: 'siigo-pyme' },
     ],
+    [
+      ['--print-agent-rules'],
+      { tipo: 'reglas', json: false, cliente: undefined, nombre: undefined, instalar: false, forzar: false },
+    ],
+    [
+      ['--print-agent-rules', '--cliente', 'hermes'],
+      { tipo: 'reglas', json: false, cliente: 'hermes', nombre: undefined, instalar: false, forzar: false },
+    ],
+    [
+      ['--print-agent-rules', '--cliente', 'hermes', '--instalar', '--forzar'],
+      { tipo: 'reglas', json: false, cliente: 'hermes', nombre: undefined, instalar: true, forzar: true },
+    ],
   ];
 
   for (const [argv, esperado] of casos) {

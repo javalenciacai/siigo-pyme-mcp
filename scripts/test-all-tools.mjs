@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Ejercita LAS 57 herramientas del perfil `all` contra una instalacion real de SIIGO.
+ * Ejercita LAS 58 herramientas del perfil `all` contra una instalacion real de SIIGO.
  *
  *   $env:SIIGO_USUARIO='TU_USUARIO'; $env:SIIGO_CLAVE='TU_CLAVE'; node scripts/test-all-tools.mjs
  *
  * Que hace con cada grupo:
  *
- *   - 10 de apoyo: se invocan y se comprueba la forma de la respuesta.
+ *   - 11 de apoyo: se invocan y se comprueba la forma de la respuesta (incluye siigo_start_here).
  *   - 29 GET*: se ejecutan DE VERDAD contra la empresa. Son de solo lectura: extraen a un
  *     .xlsx y no tocan la contabilidad.
  *   - 18 PUSH*: NO se ejecutan. Importan datos y modificarian la contabilidad de la
@@ -58,6 +58,7 @@ const REQUERIDOS = {
 };
 
 const META = [
+  'siigo_start_here',
   'siigo_doctor',
   'siigo_list_installations',
   'siigo_list_companies',
@@ -110,6 +111,11 @@ function cuerpo(r) {
 // ── 1. Herramientas de apoyo ─────────────────────────────────────────────────
 console.log(`\n=== ${META.length} herramientas de apoyo ===`);
 
+{
+  const r = cuerpo(await llamar('siigo_start_here', {}));
+  const ok = Array.isArray(r.protocolo) && r.protocolo.length > 0;
+  anota('siigo_start_here', 'apoyo', ok ? 'OK' : 'FALLO', `${r.protocolo?.length} parrafo(s) de protocolo`);
+}
 {
   const r = cuerpo(await llamar('siigo_doctor', {}));
   // Un veredicto adverso seria un diagnostico correcto; lo que se comprueba es que responda
