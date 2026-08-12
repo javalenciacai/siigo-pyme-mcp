@@ -6,12 +6,12 @@
     "url": "https://github.com/javalenciacai/siigo-pyme-mcp.git",
     "source": "github"
   },
-  "version": "0.3.0",
+  "version": "0.4.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "siigo-pyme-mcp",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
@@ -34,7 +34,7 @@
           "name": "SIIGO_ANO"
         },
         {
-          "description": "core (por defecto) expone 11 herramientas; all expone una por cada una de las 47 funciones.",
+          "description": "core (por defecto) expone 12 herramientas; all expone una por cada una de las 47 funciones, mas las de apoyo.",
           "isRequired": false,
           "name": "SIIGO_TOOLS"
         },
